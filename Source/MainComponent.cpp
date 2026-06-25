@@ -27,7 +27,7 @@ void MainComponent::resized()
 
 juce::StringArray MainComponent::getMenuBarNames()
 {
-    return { "File", "Edit" };
+    return { "File", "Edit", "View" };
 }
 
 juce::PopupMenu MainComponent::getMenuForIndex (int menuIndex, const juce::String& menuName)
@@ -51,6 +51,50 @@ juce::PopupMenu MainComponent::getMenuForIndex (int menuIndex, const juce::Strin
         menu.addItem (copyMenuItem, "Copy", cityComponent.canCopySelection());
         menu.addItem (pasteMenuItem, "Paste", cityComponent.canPasteSelection());
     }
+    else if (menuName == "View")
+    {
+        auto tickedText = [] (juce::String text, bool ticked)
+        {
+            return juce::String (ticked ? juce::String::fromUTF8 (u8"\u2713 ") : juce::String ("  ")) + text;
+        };
+
+        const auto viewMode = cityComponent.currentViewMode();
+        menu.addItem (isometricViewMenuItem,
+                      tickedText ("Isometric View", viewMode == CityViewMode::isometric),
+                      true,
+                      viewMode == CityViewMode::isometric);
+        menu.addItem (topDownViewMenuItem,
+                      tickedText ("Top-down View", viewMode == CityViewMode::topDown),
+                      true,
+                      viewMode == CityViewMode::topDown);
+        menu.addSeparator();
+        const auto colourWireframeEnabled = cityComponent.isColourWireframeModeEnabled();
+        menu.addItem (colourWireframeMenuItem,
+                      tickedText ("Colour Wireframe Mode", colourWireframeEnabled),
+                      true,
+                      colourWireframeEnabled);
+        const auto uiVisible = cityComponent.isUiVisible();
+        menu.addItem (uiVisibleMenuItem,
+                      tickedText ("Show UI", uiVisible),
+                      true,
+                      uiVisible);
+        menu.addSeparator();
+        const auto activationRingsVisible = cityComponent.areActivationRingsVisible();
+        menu.addItem (activationRingsMenuItem,
+                      tickedText ("Polygon Activation Rings", activationRingsVisible),
+                      true,
+                      activationRingsVisible);
+        const auto soundingNotesVisible = cityComponent.areSoundingNotesVisible();
+        menu.addItem (soundingNotesMenuItem,
+                      tickedText ("Polygon Sounding Notes", soundingNotesVisible),
+                      true,
+                      soundingNotesVisible);
+        const auto triggerTelemetryVisible = cityComponent.isTriggerTelemetryVisible();
+        menu.addItem (triggerTelemetryMenuItem,
+                      tickedText ("Trigger Telemetry Overlay", triggerTelemetryVisible),
+                      true,
+                      triggerTelemetryVisible);
+    }
 
     return menu;
 }
@@ -68,13 +112,33 @@ void MainComponent::menuItemSelected (int menuItemID, int topLevelMenuIndex)
         case redoMenuItem:     cityComponent.redo(); break;
         case copyMenuItem:     cityComponent.copySelectionToClipboard(); break;
         case pasteMenuItem:    cityComponent.pasteSelectionFromClipboard(); break;
+        case isometricViewMenuItem: cityComponent.setViewMode (CityViewMode::isometric); break;
+        case topDownViewMenuItem:   cityComponent.setViewMode (CityViewMode::topDown); break;
+        case colourWireframeMenuItem:
+            cityComponent.setColourWireframeModeEnabled (! cityComponent.isColourWireframeModeEnabled());
+            break;
+        case uiVisibleMenuItem:
+            cityComponent.setUiVisible (! cityComponent.isUiVisible());
+            break;
+        case triggerTelemetryMenuItem:
+            cityComponent.setTriggerTelemetryVisible (! cityComponent.isTriggerTelemetryVisible());
+            break;
+        case activationRingsMenuItem:
+            cityComponent.setActivationRingsVisible (! cityComponent.areActivationRingsVisible());
+            break;
+        case soundingNotesMenuItem:
+            cityComponent.setSoundingNotesVisible (! cityComponent.areSoundingNotesVisible());
+            break;
         default: break;
     }
+
+    menuItemsChanged();
 }
 
 void MainComponent::prepareToPlay (int, double sampleRate)
 {
     collisionSynth.prepare (sampleRate);
+    cityComponent.armSoundTriggers();
 }
 
 void MainComponent::getNextAudioBlock (const juce::AudioSourceChannelInfo& bufferToFill)
@@ -101,7 +165,7 @@ void MainComponent::startNewCity()
 
 void MainComponent::openCity()
 {
-    fileChooser = std::make_unique<juce::FileChooser> ("Open Folding Polygon City",
+    fileChooser = std::make_unique<juce::FileChooser> ("Open unfolding",
                                                        juce::File::getSpecialLocation (juce::File::userDocumentsDirectory),
                                                        "*.foldcity;*.json",
                                                        true,
@@ -127,15 +191,15 @@ void MainComponent::openCity()
         cityComponent.recordUndoState();
 
         if (! cityComponent.loadState (parsed))
-            showFileError ("Could not open city", "That file is not a Folding Polygon City save.");
+            showFileError ("Could not open city", "That file is not an unfolding save.");
     });
 }
 
 void MainComponent::saveCity()
 {
-    fileChooser = std::make_unique<juce::FileChooser> ("Save Folding Polygon City",
+    fileChooser = std::make_unique<juce::FileChooser> ("Save unfolding",
                                                        juce::File::getSpecialLocation (juce::File::userDocumentsDirectory)
-                                                           .getChildFile ("Folding Polygon City.foldcity"),
+                                                           .getChildFile ("unfolding.foldcity"),
                                                        "*.foldcity",
                                                        true,
                                                        false,

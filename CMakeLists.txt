@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(FoldingPolygonCity VERSION 0.1.0 LANGUAGES C CXX)
+project(unfolding VERSION 0.1.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -20,13 +20,13 @@ else()
     FetchContent_MakeAvailable(JUCE)
 endif()
 
-juce_add_gui_app(FoldingPolygonCity
+juce_add_gui_app(unfolding
     COMPANY_NAME "Codex"
-    PRODUCT_NAME "Folding Polygon City"
-    BUNDLE_ID "com.codex.foldingpolygoncity"
+    PRODUCT_NAME "unfolding"
+    BUNDLE_ID "com.codex.unfolding"
 )
 
-target_sources(FoldingPolygonCity
+target_sources(unfolding
     PRIVATE
         Source/CityComponent.cpp
         Source/CityComponent.h
@@ -51,15 +51,15 @@ target_sources(FoldingPolygonCity
         Source/MainComponent.h
 )
 
-target_compile_definitions(FoldingPolygonCity
+target_compile_definitions(unfolding
     PRIVATE
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0
-        JUCE_APPLICATION_NAME_STRING="$<TARGET_PROPERTY:FoldingPolygonCity,JUCE_PRODUCT_NAME>"
-        JUCE_APPLICATION_VERSION_STRING="$<TARGET_PROPERTY:FoldingPolygonCity,JUCE_VERSION>"
+        JUCE_APPLICATION_NAME_STRING="$<TARGET_PROPERTY:unfolding,JUCE_PRODUCT_NAME>"
+        JUCE_APPLICATION_VERSION_STRING="$<TARGET_PROPERTY:unfolding,JUCE_VERSION>"
 )
 
-target_link_libraries(FoldingPolygonCity
+target_link_libraries(unfolding
     PRIVATE
         juce::juce_audio_utils
         juce::juce_gui_extra

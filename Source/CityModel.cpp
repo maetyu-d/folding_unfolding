@@ -16,6 +16,13 @@ float distanceToSegment (Vec2 point, Vec2 a, Vec2 b) noexcept
     const auto t = denom > 0.0001f ? juce::jlimit (0.0f, 1.0f, (ap.x * ab.x + ap.y * ab.y) / denom) : 0.0f;
     return distance (point, { a.x + ab.x * t, a.y + ab.y * t });
 }
+
+float squaredDistance (Vec2 a, Vec2 b) noexcept
+{
+    const auto dx = a.x - b.x;
+    const auto dy = a.y - b.y;
+    return dx * dx + dy * dy;
+}
 }
 
 void CityModel::clear() noexcept
@@ -81,7 +88,7 @@ FoldingModule& CityModel::addModule (Vec2 position,
     module.radius = juce::jlimit (24.0f, 1300.0f, radius);
     module.flapDepth = juce::jlimit (8.0f, 110.0f, flapDepth);
     module.elevation = elevationAt (position);
-    module.rateDivision = juce::jlimit (1.0f, FoldingModule::maxRateDivision, rateDivision);
+    module.rateDivision = juce::jlimit (FoldingModule::minRateDivision, FoldingModule::maxRateDivision, rateDivision);
     module.phase = std::fmod (phase + juce::MathConstants<float>::twoPi,
                               juce::MathConstants<float>::twoPi);
     module.initialiseTipPitches();
@@ -520,15 +527,16 @@ float CityModel::elevationAt (Vec2 worldPosition) const
 bool CityModel::isPoweredAt (Vec2 worldPosition) const
 {
     const PowerSwitch* controller = nullptr;
-    auto bestDistance = std::numeric_limits<float>::max();
+    auto bestDistanceSquared = std::numeric_limits<float>::max();
 
     for (const auto& powerSwitch : placedPowerSwitches)
     {
-        const auto switchDistance = distance (worldPosition, powerSwitch.position);
+        const auto switchDistanceSquared = squaredDistance (worldPosition, powerSwitch.position);
+        const auto areaRadiusSquared = powerSwitch.areaRadius * powerSwitch.areaRadius;
 
-        if (switchDistance <= powerSwitch.areaRadius && switchDistance < bestDistance)
+        if (switchDistanceSquared <= areaRadiusSquared && switchDistanceSquared < bestDistanceSquared)
         {
-            bestDistance = switchDistance;
+            bestDistanceSquared = switchDistanceSquared;
             controller = &powerSwitch;
         }
     }
@@ -576,38 +584,44 @@ bool CityModel::isSwitchEnergized (const PowerSwitch& powerSwitch) const
 CityHit CityModel::hitTest (Vec2 worldPosition, double timeSeconds, float globalTempoBpm) const
 {
     CityHit bestHit;
-    auto bestDistance = std::numeric_limits<float>::max();
+    auto bestDistanceSquared = std::numeric_limits<float>::max();
 
     for (const auto& module : placedModules)
     {
         const auto hitRadius = module.collisionRadiusAt (timeSeconds, globalTempoBpm);
-        const auto hitDistance = distance (worldPosition, module.position);
+        const auto hitDistanceSquared = squaredDistance (worldPosition, module.position);
+        const auto hitRadiusSquared = hitRadius * hitRadius;
 
-        if (hitDistance <= hitRadius && hitDistance < bestDistance)
+        if (hitDistanceSquared <= hitRadiusSquared && hitDistanceSquared < bestDistanceSquared)
         {
-            bestDistance = hitDistance;
+            bestDistanceSquared = hitDistanceSquared;
             bestHit = { CityObjectKind::module, module.id };
         }
     }
 
     for (const auto& platter : placedPlatters)
     {
-        const auto centreDistance = distance (worldPosition, platter.position);
+        const auto centreDistanceSquared = squaredDistance (worldPosition, platter.position);
+        const auto hitRadius = platter.hitRadius();
+        const auto hitRadiusSquared = hitRadius * hitRadius;
 
-        if (centreDistance <= platter.hitRadius() && centreDistance < bestDistance)
+        if (centreDistanceSquared <= hitRadiusSquared && centreDistanceSquared < bestDistanceSquared)
         {
-            bestDistance = centreDistance;
+            bestDistanceSquared = centreDistanceSquared;
             bestHit = { CityObjectKind::platter, platter.id };
         }
+
+        const auto mountRadius = platter.mountRadius();
+        const auto mountRadiusSquared = mountRadius * mountRadius;
 
         for (int i = 0; i < platter.stands; ++i)
         {
             const auto stand = platter.standPosition (i, timeSeconds, globalTempoBpm);
-            const auto hitDistance = distance (worldPosition, stand);
+            const auto hitDistanceSquared = squaredDistance (worldPosition, stand);
 
-            if (hitDistance <= platter.mountRadius() && hitDistance < bestDistance)
+            if (hitDistanceSquared <= mountRadiusSquared && hitDistanceSquared < bestDistanceSquared)
             {
-                bestDistance = hitDistance;
+                bestDistanceSquared = hitDistanceSquared;
                 bestHit = { CityObjectKind::platter, platter.id };
             }
         }
@@ -616,45 +630,50 @@ CityHit CityModel::hitTest (Vec2 worldPosition, double timeSeconds, float global
     for (const auto& plank : placedPlanks)
     {
         const auto socket = plank.socketPosition();
-        const auto hitDistance = std::min (distanceToSegment (worldPosition, plank.position, socket),
-                                           distance (worldPosition, socket));
+        const auto segmentDistance = distanceToSegment (worldPosition, plank.position, socket);
+        const auto hitDistanceSquared = std::min (segmentDistance * segmentDistance,
+                                                  squaredDistance (worldPosition, socket));
+        const auto socketRadius = plank.socketRadius();
+        const auto socketRadiusSquared = socketRadius * socketRadius;
 
-        if (hitDistance <= plank.socketRadius() && hitDistance < bestDistance)
+        if (hitDistanceSquared <= socketRadiusSquared && hitDistanceSquared < bestDistanceSquared)
         {
-            bestDistance = hitDistance;
+            bestDistanceSquared = hitDistanceSquared;
             bestHit = { CityObjectKind::plank, plank.id };
         }
     }
 
     for (const auto& powerSwitch : placedPowerSwitches)
     {
-        const auto hitDistance = distance (worldPosition, powerSwitch.position);
+        const auto hitDistanceSquared = squaredDistance (worldPosition, powerSwitch.position);
+        const auto triggerRadiusSquared = powerSwitch.triggerRadius * powerSwitch.triggerRadius;
 
-        if (hitDistance <= powerSwitch.triggerRadius && hitDistance < bestDistance)
+        if (hitDistanceSquared <= triggerRadiusSquared && hitDistanceSquared < bestDistanceSquared)
         {
-            bestDistance = hitDistance;
+            bestDistanceSquared = hitDistanceSquared;
             bestHit = { CityObjectKind::powerSwitch, powerSwitch.id };
         }
     }
 
     for (const auto& source : placedPowerSources)
     {
-        const auto hitDistance = distance (worldPosition, source.position);
+        const auto hitDistanceSquared = squaredDistance (worldPosition, source.position);
+        const auto radiusSquared = source.radius * source.radius;
 
-        if (hitDistance <= source.radius && hitDistance < bestDistance)
+        if (hitDistanceSquared <= radiusSquared && hitDistanceSquared < bestDistanceSquared)
         {
-            bestDistance = hitDistance;
+            bestDistanceSquared = hitDistanceSquared;
             bestHit = { CityObjectKind::powerSource, source.id };
         }
     }
 
     for (const auto& block : placedBlocks)
     {
-        const auto hitDistance = distance (worldPosition, block.position);
+        const auto hitDistanceSquared = squaredDistance (worldPosition, block.position);
 
-        if (block.contains (worldPosition) && hitDistance < bestDistance)
+        if (block.contains (worldPosition) && hitDistanceSquared < bestDistanceSquared)
         {
-            bestDistance = hitDistance;
+            bestDistanceSquared = hitDistanceSquared;
             bestHit = { CityObjectKind::block, block.id };
         }
     }

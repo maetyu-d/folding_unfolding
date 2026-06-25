@@ -6,15 +6,18 @@ namespace
 {
 constexpr auto gap = 10;
 constexpr auto panelRadius = 18.0f;
+bool wireframePalette = false;
 
-juce::Colour panelColour() { return juce::Colour (0xeef8fbf1); }
-juce::Colour panelLineColour() { return juce::Colour (0xb8ffffff); }
-juce::Colour textColour() { return juce::Colour (0xff263832); }
-juce::Colour quietTextColour() { return juce::Colour (0xff65766f); }
-juce::Colour accentColour() { return juce::Colour (0xff32c9b1); }
-juce::Colour activeButtonColour() { return juce::Colour (0xffffd766); }
-juce::Colour inactiveButtonColour() { return juce::Colour (0xbaffffff); }
-juce::Colour inkColour() { return juce::Colour (0xff18241f); }
+juce::Colour panelColour() { return wireframePalette ? juce::Colour (0xc8060d14) : juce::Colour (0xeef8fbf1); }
+juce::Colour panelLineColour() { return wireframePalette ? juce::Colour (0xbb00ffc8) : juce::Colour (0xb8ffffff); }
+juce::Colour textColour() { return wireframePalette ? juce::Colour (0xffeaffff) : juce::Colour (0xff263832); }
+juce::Colour quietTextColour() { return wireframePalette ? juce::Colour (0xff8cefe5) : juce::Colour (0xff65766f); }
+juce::Colour accentColour() { return wireframePalette ? juce::Colour (0xff23f7ff) : juce::Colour (0xff32c9b1); }
+juce::Colour activeButtonColour() { return wireframePalette ? juce::Colour (0xff39ff88) : juce::Colour (0xffffd766); }
+juce::Colour inactiveButtonColour() { return wireframePalette ? juce::Colour (0x3315f3ff) : juce::Colour (0xbaffffff); }
+juce::Colour inkColour() { return wireframePalette ? juce::Colour (0xff02070b) : juce::Colour (0xff18241f); }
+
+void applyPitchEditorTheme (juce::TextEditor& editor);
 
 juce::Colour colourForMode (CityToolbar::BuildMode mode)
 {
@@ -30,6 +33,24 @@ juce::Colour colourForMode (CityToolbar::BuildMode mode)
     }
 
     return activeButtonColour();
+}
+
+void configurePitchEditor (juce::TextEditor& editor)
+{
+    editor.setJustification (juce::Justification::centred);
+    editor.setSelectAllWhenFocused (true);
+    editor.setFont (juce::FontOptions (12.0f, juce::Font::bold));
+    applyPitchEditorTheme (editor);
+}
+
+void applyPitchEditorTheme (juce::TextEditor& editor)
+{
+    editor.setColour (juce::TextEditor::backgroundColourId,
+                      wireframePalette ? juce::Colour (0xbb03080e) : juce::Colours::white.withAlpha (0.70f));
+    editor.setColour (juce::TextEditor::outlineColourId,
+                      wireframePalette ? juce::Colour (0x8823f7ff) : juce::Colour (0x809db0a7));
+    editor.setColour (juce::TextEditor::focusedOutlineColourId, accentColour());
+    editor.setColour (juce::TextEditor::textColourId, textColour());
 }
 
 juce::Colour colourForMeter (int sides)
@@ -56,20 +77,23 @@ struct RateOption
 };
 
 constexpr RateOption rateOptions[] = {
-    { 1,  "1/1",   1.0f },
-    { 2,  "1/2.",  4.0f / 3.0f },
-    { 3,  "1/2",   2.0f },
-    { 4,  "1/2T",  3.0f },
-    { 5,  "1/4.",  8.0f / 3.0f },
-    { 6,  "1/4",   4.0f },
-    { 7,  "1/4T",  6.0f },
-    { 8,  "1/8.",  16.0f / 3.0f },
-    { 9,  "1/8",   8.0f },
-    { 10, "1/8T",  12.0f },
-    { 11, "1/16.", 32.0f / 3.0f },
-    { 12, "1/16",  16.0f },
-    { 13, "1/16T", 24.0f },
-    { 14, "1/32",  32.0f },
+    { 1,  "4 bars",         0.25f },
+    { 2,  "3 bars",         1.0f / 3.0f },
+    { 3,  "2 bars",         0.5f },
+    { 4,  "1 bar",          1.0f },
+    { 5,  "1/2 bar",        2.0f },
+    { 6,  "1/2 bar triplet", 3.0f },
+    { 7,  "1/2.",           4.0f / 3.0f },
+    { 8,  "1/4.",           8.0f / 3.0f },
+    { 9,  "1/4",            4.0f },
+    { 10, "1/4T",           6.0f },
+    { 11, "1/8.",           16.0f / 3.0f },
+    { 12, "1/8",            8.0f },
+    { 13, "1/8T",           12.0f },
+    { 14, "1/16.",          32.0f / 3.0f },
+    { 15, "1/16",           16.0f },
+    { 16, "1/16T",          24.0f },
+    { 17, "1/32",           32.0f },
 };
 
 constexpr RateOption platterRateOptions[] = {
@@ -102,14 +126,21 @@ juce::Rectangle<int> takeRow (juce::Rectangle<int>& bounds, int height)
 
 void paintPanel (juce::Graphics& g, juce::Rectangle<float> bounds)
 {
-    g.setColour (juce::Colours::black.withAlpha (0.08f));
-    g.fillRoundedRectangle (bounds.translated (0.0f, 5.0f), panelRadius);
+    g.setColour (juce::Colours::black.withAlpha (wireframePalette ? 0.34f : 0.08f));
+    g.fillRoundedRectangle (bounds.translated (0.0f, wireframePalette ? 2.0f : 5.0f), panelRadius);
 
     g.setColour (panelColour());
     g.fillRoundedRectangle (bounds, panelRadius);
 
     g.setColour (panelLineColour());
-    g.drawRoundedRectangle (bounds, panelRadius, 1.0f);
+    g.drawRoundedRectangle (bounds, panelRadius, wireframePalette ? 1.4f : 1.0f);
+
+    if (wireframePalette)
+    {
+        const auto inset = bounds.reduced (7.0f);
+        g.setColour (accentColour().withAlpha (0.16f));
+        g.drawRoundedRectangle (inset, panelRadius - 7.0f, 0.8f);
+    }
 }
 
 template <size_t size>
@@ -211,6 +242,9 @@ CityToolbar::CityToolbar()
     tipPitchControl.slider.valueFromTextFunction = [] (const juce::String& text)
     {
         const auto trimmed = text.trim();
+        if (trimmed.equalsIgnoreCase ("r"))
+            return -1.0;
+
         if (trimmed.equalsIgnoreCase ("x"))
             return 0.0;
 
@@ -304,6 +338,55 @@ CityToolbar::CityToolbar()
     };
     addAndMakeVisible (switchRetriggerControl.label);
     addAndMakeVisible (switchRetriggerControl.combo);
+
+    pitchListTitle.setText ("tip  note  R  low  high   p       tip  note  R  low  high   p", juce::dontSendNotification);
+    pitchListTitle.setJustificationType (juce::Justification::centredLeft);
+    pitchListTitle.setColour (juce::Label::textColourId, quietTextColour());
+    pitchListTitle.setFont (juce::FontOptions (12.0f, juce::Font::bold));
+    addAndMakeVisible (pitchListTitle);
+
+    for (size_t i = 0; i < tipPitchRows.size(); ++i)
+    {
+        auto& row = tipPitchRows[i];
+        const auto tipIndex = static_cast<int> (i);
+        row.label.setText (juce::String (tipIndex + 1), juce::dontSendNotification);
+        row.label.setJustificationType (juce::Justification::centred);
+        row.label.setColour (juce::Label::textColourId, quietTextColour());
+        row.label.setFont (juce::FontOptions (12.0f, juce::Font::bold));
+        addAndMakeVisible (row.label);
+
+        configurePitchEditor (row.pitch);
+        configurePitchEditor (row.low);
+        configurePitchEditor (row.high);
+        configurePitchEditor (row.probability);
+        addAndMakeVisible (row.pitch);
+        addAndMakeVisible (row.low);
+        addAndMakeVisible (row.high);
+        addAndMakeVisible (row.probability);
+
+        row.random.setButtonText ({});
+        row.random.setClickingTogglesState (true);
+        row.random.setColour (juce::TextButton::buttonColourId,
+                              wireframePalette ? juce::Colour (0x2200fff0) : juce::Colours::white.withAlpha (0.35f));
+        row.random.setColour (juce::TextButton::buttonOnColourId, activeButtonColour());
+        row.random.setColour (juce::TextButton::textColourOffId, textColour());
+        row.random.setColour (juce::TextButton::textColourOnId, inkColour());
+        row.random.onClick = [this, tipIndex]
+        {
+            if (! suppressCallbacks && onTipPitchRandomChanged)
+                onTipPitchRandomChanged (tipIndex, tipPitchRows[static_cast<size_t> (tipIndex)].random.getToggleState());
+        };
+        addAndMakeVisible (row.random);
+
+        row.pitch.onReturnKey = [this, tipIndex] { commitTipPitchValue (tipIndex); };
+        row.pitch.onFocusLost = [this, tipIndex] { commitTipPitchValue (tipIndex); };
+        row.low.onReturnKey = [this, tipIndex] { commitTipPitchRange (tipIndex); };
+        row.low.onFocusLost = [this, tipIndex] { commitTipPitchRange (tipIndex); };
+        row.high.onReturnKey = [this, tipIndex] { commitTipPitchRange (tipIndex); };
+        row.high.onFocusLost = [this, tipIndex] { commitTipPitchRange (tipIndex); };
+        row.probability.onReturnKey = [this, tipIndex] { commitTipProbability (tipIndex); };
+        row.probability.onFocusLost = [this, tipIndex] { commitTipProbability (tipIndex); };
+    }
 
     radiusControl.slider.onValueChange = [this]
     {
@@ -601,7 +684,52 @@ void CityToolbar::resized()
         tipPitchControl.slider.setBounds (pitchArea);
     }
 
-    bounds.removeFromTop (4);
+    if (activePolygonSelected)
+    {
+        auto titleArea = bounds.removeFromTop (18);
+        pitchListTitle.setBounds (titleArea);
+        bounds.removeFromTop (7);
+
+        const auto rows = (activeSides + 1) / 2;
+        const auto rowHeight = 32;
+        const auto rowGap = 7;
+        const auto gridHeight = rows * rowHeight + juce::jmax (0, rows - 1) * rowGap;
+        auto gridArea = bounds.removeFromTop (gridHeight);
+        bounds.removeFromTop (14);
+        const auto columnGap = 14;
+        const auto columnWidth = (gridArea.getWidth() - columnGap) / 2;
+
+        for (size_t i = 0; i < tipPitchRows.size(); ++i)
+        {
+            auto& row = tipPitchRows[i];
+
+            if (static_cast<int> (i) >= activeSides)
+                continue;
+
+            const auto column = static_cast<int> (i) / rows;
+            const auto rowInColumn = static_cast<int> (i) % rows;
+            auto rowArea = gridArea.withX (gridArea.getX() + column * (columnWidth + columnGap))
+                                   .withY (gridArea.getY() + rowInColumn * (rowHeight + rowGap))
+                                   .withWidth (columnWidth)
+                                   .withHeight (rowHeight);
+            row.label.setBounds (rowArea.removeFromLeft (20));
+            rowArea.removeFromLeft (4);
+            row.pitch.setBounds (rowArea.removeFromLeft (40));
+            rowArea.removeFromLeft (5);
+
+            auto randomArea = rowArea.removeFromLeft (24);
+            row.random.setBounds (randomArea.withSizeKeepingCentre (18, 18));
+
+            rowArea.removeFromLeft (5);
+            row.low.setBounds (rowArea.removeFromLeft (38));
+            rowArea.removeFromLeft (4);
+            row.high.setBounds (rowArea.removeFromLeft (38));
+            rowArea.removeFromLeft (4);
+            row.probability.setBounds (rowArea.removeFromLeft (juce::jmin (44, rowArea.getWidth())));
+        }
+    }
+
+    bounds.removeFromTop (2);
     auto utilityArea = takeRow (bounds, 34);
     deleteButton.setBounds (utilityArea);
 }
@@ -622,18 +750,38 @@ void CityToolbar::setValues (int sides,
                              float blockSize,
                              bool tipSelected,
                              float tipPitch,
+                             bool polygonSelected,
+                             const std::array<float, 8>& tipPitches,
+                             const std::array<bool, 8>& tipRandom,
+                             const std::array<float, 8>& tipRandomLow,
+                             const std::array<float, 8>& tipRandomHigh,
+                             const std::array<float, 8>& tipProbabilities,
                              float tempoBpm,
                              bool playing,
                              bool switchSelected,
                              PowerSwitchActivationMode switchActivationMode,
                              float switchOffDuration,
-                             PowerSwitchRetriggerPolicy switchRetriggerPolicy)
+                             PowerSwitchRetriggerPolicy switchRetriggerPolicy,
+                             bool colourWireframeMode)
 {
     const juce::ScopedValueSetter<bool> scopedSetter (suppressCallbacks, true);
 
     activeSwitchSelected = switchSelected;
     activeRotationControl = showRotationControl;
     activeTipSelected = tipSelected;
+    activePolygonSelected = polygonSelected;
+    activeSides = juce::jlimit (3, 8, sides);
+
+    if (wireframeTheme != colourWireframeMode)
+    {
+        wireframeTheme = colourWireframeMode;
+        applyTheme();
+    }
+    else
+    {
+        wireframePalette = wireframeTheme;
+    }
+
     selectBuildMode (toolMode, controlsMode);
     selectSideButton (sides);
     radiusControl.slider.setValue (radius, juce::dontSendNotification);
@@ -645,6 +793,29 @@ void CityToolbar::setValues (int sides,
     tipPitchControl.slider.setValue (tipPitch, juce::dontSendNotification);
     tipPitchControl.label.setVisible (activeTipSelected);
     tipPitchControl.slider.setVisible (activeTipSelected);
+    pitchListTitle.setVisible (activePolygonSelected);
+    for (size_t i = 0; i < tipPitchRows.size(); ++i)
+    {
+        auto& row = tipPitchRows[i];
+        const auto visible = activePolygonSelected && static_cast<int> (i) < activeSides;
+        row.label.setVisible (visible);
+        row.pitch.setVisible (visible);
+        row.random.setVisible (visible);
+        row.low.setVisible (visible);
+        row.high.setVisible (visible);
+        row.probability.setVisible (visible);
+        row.pitch.setText (tipRandom[i] ? juce::String ("R") : pitchTextForValue (tipPitches[i]), false);
+        row.random.setToggleState (tipRandom[i], juce::dontSendNotification);
+        row.low.setText (pitchTextForValue (tipRandomLow[i]), false);
+        row.high.setText (pitchTextForValue (tipRandomHigh[i]), false);
+        row.probability.setText (juce::String (juce::jlimit (0.0f, 1.0f, tipProbabilities[i]), 2), false);
+        row.pitch.setEnabled (true);
+        row.low.setEnabled (true);
+        row.high.setEnabled (true);
+        row.low.setAlpha (tipRandom[i] ? 1.0f : (wireframeTheme ? 0.78f : 0.72f));
+        row.high.setAlpha (tipRandom[i] ? 1.0f : (wireframeTheme ? 0.78f : 0.72f));
+        row.probability.setAlpha (1.0f);
+    }
     phaseControl.slider.setValue (phaseDegrees, juce::dontSendNotification);
     standsControl.slider.setValue (juce::jlimit (1, 8, platterStands), juce::dontSendNotification);
     diameterControl.slider.setValue (platterDiameter, juce::dontSendNotification);
@@ -691,20 +862,114 @@ void CityToolbar::configureSlider (LabeledSlider& control,
     addAndMakeVisible (control.slider);
 }
 
+void CityToolbar::applyTheme()
+{
+    wireframePalette = wireframeTheme;
+
+    auto styleButton = [] (juce::TextButton& button)
+    {
+        button.setColour (juce::TextButton::buttonColourId, inactiveButtonColour());
+        button.setColour (juce::TextButton::buttonOnColourId,
+                          wireframePalette ? activeButtonColour().withAlpha (0.78f) : activeButtonColour());
+        button.setColour (juce::TextButton::textColourOffId, textColour());
+        button.setColour (juce::TextButton::textColourOnId,
+                          wireframePalette ? textColour() : inkColour());
+    };
+
+    for (auto* label : { &zoomControl.label, &radiusControl.label, &flapControl.label, &rotationControl.label,
+                         &tipPitchControl.label, &phaseControl.label, &tempoControl.label, &standsControl.label,
+                         &diameterControl.label, &blockLevelsControl.label, &blockSizeControl.label,
+                         &switchOffTimeControl.label, &rateControl.label, &switchActivationControl.label,
+                         &switchRetriggerControl.label, &pitchListTitle })
+    {
+        label->setColour (juce::Label::textColourId, quietTextColour());
+    }
+
+    for (auto* slider : { &zoomControl.slider, &radiusControl.slider, &flapControl.slider, &rotationControl.slider,
+                          &tipPitchControl.slider, &phaseControl.slider, &tempoControl.slider, &standsControl.slider,
+                          &diameterControl.slider, &blockLevelsControl.slider, &blockSizeControl.slider,
+                          &switchOffTimeControl.slider })
+    {
+        slider->setColour (juce::Slider::backgroundColourId,
+                           wireframeTheme ? juce::Colour (0x5523f7ff) : juce::Colour (0x40b6c7be));
+        slider->setColour (juce::Slider::trackColourId, accentColour());
+        slider->setColour (juce::Slider::thumbColourId, activeButtonColour());
+        slider->setColour (juce::Slider::textBoxBackgroundColourId,
+                           wireframeTheme ? juce::Colour (0xee050b12) : juce::Colours::white.withAlpha (0.68f));
+        slider->setColour (juce::Slider::textBoxOutlineColourId,
+                           wireframeTheme ? juce::Colour (0x9923f7ff) : juce::Colour (0x809db0a7));
+        slider->setColour (juce::Slider::textBoxTextColourId, textColour());
+    }
+
+    for (auto* combo : { &rateControl.combo, &switchActivationControl.combo, &switchRetriggerControl.combo })
+    {
+        combo->setColour (juce::ComboBox::backgroundColourId, inactiveButtonColour());
+        combo->setColour (juce::ComboBox::outlineColourId, panelLineColour());
+        combo->setColour (juce::ComboBox::textColourId, textColour());
+        combo->setColour (juce::ComboBox::arrowColourId, accentColour());
+    }
+
+    tempoValueBox.setColour (juce::Label::backgroundColourId,
+                             wireframeTheme ? juce::Colour (0xbb03080e) : juce::Colours::white.withAlpha (0.68f));
+    tempoValueBox.setColour (juce::Label::outlineColourId,
+                             wireframeTheme ? juce::Colour (0x9923f7ff) : juce::Colour (0x809db0a7));
+    tempoValueBox.setColour (juce::Label::textColourId, textColour());
+    tempoValueBox.setColour (juce::Label::textWhenEditingColourId, textColour());
+    tempoValueBox.setColour (juce::Label::backgroundWhenEditingColourId,
+                             wireframeTheme ? juce::Colour (0xff02070b) : juce::Colours::white.withAlpha (0.92f));
+
+    for (auto* button : { &playButton, &pauseButton, &stopButton, &selectModeButton, &polygonModeButton,
+                          &platterModeButton, &blockModeButton, &plankModeButton, &cableModeButton })
+        styleButton (*button);
+
+    deleteButton.setColour (juce::TextButton::buttonColourId,
+                            wireframeTheme ? juce::Colour (0x4439ff88) : juce::Colour (0x55ffd766));
+    deleteButton.setColour (juce::TextButton::buttonOnColourId, activeButtonColour());
+    deleteButton.setColour (juce::TextButton::textColourOffId, textColour());
+    deleteButton.setColour (juce::TextButton::textColourOnId, inkColour());
+    clearButton.setColour (juce::TextButton::buttonColourId,
+                           wireframeTheme ? juce::Colour (0x55ff4fd2) : juce::Colour (0x55ff8fb1));
+    clearButton.setColour (juce::TextButton::buttonOnColourId,
+                           wireframeTheme ? juce::Colour (0xccff4fd2) : juce::Colour (0xffff8fb1));
+    clearButton.setColour (juce::TextButton::textColourOffId, textColour());
+    clearButton.setColour (juce::TextButton::textColourOnId, inkColour());
+
+    for (auto& row : tipPitchRows)
+    {
+        row.label.setColour (juce::Label::textColourId, quietTextColour());
+        row.random.setColour (juce::TextButton::buttonColourId,
+                              wireframeTheme ? juce::Colour (0x2200fff0) : juce::Colours::white.withAlpha (0.35f));
+        row.random.setColour (juce::TextButton::buttonOnColourId,
+                              wireframeTheme ? activeButtonColour().withAlpha (0.88f) : activeButtonColour());
+        row.random.setColour (juce::TextButton::textColourOffId, textColour());
+        row.random.setColour (juce::TextButton::textColourOnId, inkColour());
+        applyPitchEditorTheme (row.pitch);
+        applyPitchEditorTheme (row.low);
+        applyPitchEditorTheme (row.high);
+        applyPitchEditorTheme (row.probability);
+    }
+
+    selectSideButton (activeSides);
+    repaint();
+}
+
 void CityToolbar::selectSideButton (int sides)
 {
     for (size_t i = 0; i < sideButtons.size(); ++i)
     {
-        auto& button = sideButtons[i];
-        const auto isSelected = static_cast<int> (i) + 3 == sides;
-        const auto colour = colourForMeter (static_cast<int> (i) + 3);
-        button.setToggleState (isSelected, juce::dontSendNotification);
-        button.setColour (juce::TextButton::buttonColourId,
-                          isSelected ? colour : colour.withAlpha (0.32f));
-        button.setColour (juce::TextButton::buttonOnColourId, colour);
-        button.setColour (juce::TextButton::textColourOffId,
-                          isSelected ? inkColour() : textColour());
-        button.setColour (juce::TextButton::textColourOnId, inkColour());
+    auto& button = sideButtons[i];
+    const auto isSelected = static_cast<int> (i) + 3 == sides;
+    const auto colour = colourForMeter (static_cast<int> (i) + 3);
+    button.setToggleState (isSelected, juce::dontSendNotification);
+    button.setColour (juce::TextButton::buttonColourId,
+                      wireframePalette ? colour.withAlpha (isSelected ? 0.62f : 0.16f)
+                                       : (isSelected ? colour : colour.withAlpha (0.32f)));
+    button.setColour (juce::TextButton::buttonOnColourId,
+                      wireframePalette ? colour.withAlpha (0.72f) : colour);
+    button.setColour (juce::TextButton::textColourOffId,
+                      wireframePalette ? textColour() : (isSelected ? inkColour() : textColour()));
+    button.setColour (juce::TextButton::textColourOnId,
+                      wireframePalette ? textColour() : inkColour());
     }
 }
 
@@ -741,11 +1006,14 @@ void CityToolbar::selectBuildMode (BuildMode toolMode, BuildMode controlsMode)
         const auto colour = colourForMode (buttonMode);
         button->setToggleState (selected, juce::dontSendNotification);
         button->setColour (juce::TextButton::buttonColourId,
-                           selected ? colour : colour.withAlpha (0.32f));
-        button->setColour (juce::TextButton::buttonOnColourId, colour);
+                           wireframePalette ? colour.withAlpha (selected ? 0.34f : 0.13f)
+                                            : (selected ? colour : colour.withAlpha (0.32f)));
+        button->setColour (juce::TextButton::buttonOnColourId,
+                           wireframePalette ? colour.withAlpha (0.44f) : colour);
         button->setColour (juce::TextButton::textColourOffId,
-                           selected ? inkColour() : textColour());
-        button->setColour (juce::TextButton::textColourOnId, inkColour());
+                           wireframePalette ? textColour() : (selected ? inkColour() : textColour()));
+        button->setColour (juce::TextButton::textColourOnId,
+                           wireframePalette ? textColour() : inkColour());
     }
 
     const auto showsFoldControls = controlsMode == BuildMode::polygon;
@@ -789,9 +1057,80 @@ void CityToolbar::selectBuildMode (BuildMode toolMode, BuildMode controlsMode)
     switchOffTimeControl.slider.setVisible (showsSwitchControls);
     switchRetriggerControl.label.setVisible (showsSwitchControls);
     switchRetriggerControl.combo.setVisible (showsSwitchControls);
+    pitchListTitle.setVisible (activePolygonSelected);
+
+    for (size_t i = 0; i < tipPitchRows.size(); ++i)
+    {
+        auto& row = tipPitchRows[i];
+        const auto visible = activePolygonSelected && static_cast<int> (i) < activeSides;
+        row.label.setVisible (visible);
+        row.pitch.setVisible (visible);
+        row.random.setVisible (visible);
+        row.low.setVisible (visible);
+        row.high.setVisible (visible);
+        row.probability.setVisible (visible);
+    }
 
     resized();
     repaint();
+}
+
+void CityToolbar::commitTipPitchValue (int tipIndex)
+{
+    if (suppressCallbacks)
+        return;
+
+    const auto index = static_cast<size_t> (juce::jlimit (0, 7, tipIndex));
+    const auto text = tipPitchRows[index].pitch.getText();
+
+    if (textRequestsRandomPitch (text))
+    {
+        if (onTipPitchRandomChanged)
+            onTipPitchRandomChanged (tipIndex, true);
+
+        return;
+    }
+
+    if (onTipPitchValueChanged)
+        onTipPitchValueChanged (tipIndex, pitchValueFromText (text));
+}
+
+void CityToolbar::commitTipPitchRange (int tipIndex)
+{
+    if (suppressCallbacks || onTipPitchRangeChanged == nullptr)
+        return;
+
+    auto& row = tipPitchRows[static_cast<size_t> (juce::jlimit (0, 7, tipIndex))];
+    onTipPitchRangeChanged (tipIndex, pitchValueFromText (row.low.getText()), pitchValueFromText (row.high.getText()));
+}
+
+void CityToolbar::commitTipProbability (int tipIndex)
+{
+    if (suppressCallbacks || onTipProbabilityChanged == nullptr)
+        return;
+
+    const auto index = static_cast<size_t> (juce::jlimit (0, 7, tipIndex));
+    onTipProbabilityChanged (tipIndex, juce::jlimit (0.0f, 1.0f, static_cast<float> (tipPitchRows[index].probability.getText().getFloatValue())));
+}
+
+float CityToolbar::pitchValueFromText (const juce::String& text)
+{
+    const auto trimmed = text.trim();
+
+    if (trimmed.equalsIgnoreCase ("x"))
+        return 0.0f;
+
+    return juce::jlimit (0.0f, 96.0f, static_cast<float> (trimmed.getFloatValue()));
+}
+
+juce::String CityToolbar::pitchTextForValue (float value)
+{
+    return value <= 0.0f ? juce::String ("X") : juce::String (juce::roundToInt (value));
+}
+
+bool CityToolbar::textRequestsRandomPitch (const juce::String& text)
+{
+    return text.trim().equalsIgnoreCase ("r");
 }
 
 void CityToolbar::updateRateOptions (BuildMode buildMode)

@@ -1,4 +1,4 @@
-# Folding Polygon City
+# unfolding
 
 A JUCE/C++ desktop app for placing animated isometric folding-polygon modules, fairground-style rotating platters, stackable voxel blocks, and power-switch districts. Each module has a regular polygon floor with 3 to 8 sides and triangular flaps that fold upward over time. Platters have 1 to 8 rotating stands with attached folding polygons. Blocks stack vertically into terraces so polygons and platters can sit at different levels. Power switches own circular districts that can be turned on or off by folding polygon tips. The side count also sets the module meter from 3/4 through 8/4 and contributes to collision-tone pitch. The city is rendered as direct OpenGL triangle/line meshes with shader lighting, shadows, grid lines, and highlighted selections. Colliding modules flash and trigger a short synthesized tone.
 

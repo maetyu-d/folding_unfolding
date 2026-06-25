@@ -41,12 +41,19 @@ public:
                     float blockSize,
                     bool tipSelected,
                     float tipPitch,
+                    bool polygonSelected,
+                    const std::array<float, 8>& tipPitches,
+                    const std::array<bool, 8>& tipRandom,
+                    const std::array<float, 8>& tipRandomLow,
+                    const std::array<float, 8>& tipRandomHigh,
+                    const std::array<float, 8>& tipProbabilities,
                     float tempoBpm,
                     bool playing,
                     bool switchSelected,
                     PowerSwitchActivationMode switchActivationMode,
                     float switchOffDuration,
-                    PowerSwitchRetriggerPolicy switchRetriggerPolicy);
+                    PowerSwitchRetriggerPolicy switchRetriggerPolicy,
+                    bool colourWireframeMode);
 
     std::function<void (BuildMode buildMode)> onBuildModeChanged;
     std::function<void (int sides)> onSidesChanged;
@@ -55,6 +62,10 @@ public:
     std::function<void (float zoom)> onZoomChanged;
     std::function<void (float rotationDegrees)> onRotationChanged;
     std::function<void (float midiNote)> onTipPitchChanged;
+    std::function<void (int tipIndex, float midiNote)> onTipPitchValueChanged;
+    std::function<void (int tipIndex, bool random)> onTipPitchRandomChanged;
+    std::function<void (int tipIndex, float low, float high)> onTipPitchRangeChanged;
+    std::function<void (int tipIndex, float probability)> onTipProbabilityChanged;
     std::function<void (float rateDivision)> onRateDivisionChanged;
     std::function<void (float phaseDegrees)> onPhaseChanged;
     std::function<void (float tempoBpm)> onTempoChanged;
@@ -84,6 +95,16 @@ private:
         juce::ComboBox combo;
     };
 
+    struct TipPitchRow
+    {
+        juce::Label label;
+        juce::TextEditor pitch;
+        juce::TextButton random;
+        juce::TextEditor low;
+        juce::TextEditor high;
+        juce::TextEditor probability;
+    };
+
     void configureSlider (LabeledSlider& control,
                           const juce::String& name,
                           double min,
@@ -96,6 +117,13 @@ private:
     void selectBuildMode (BuildMode toolMode, BuildMode controlsMode);
     void updateRateOptions (BuildMode buildMode);
     float selectedRateDivision() const;
+    void commitTipPitchValue (int tipIndex);
+    void commitTipPitchRange (int tipIndex);
+    void commitTipProbability (int tipIndex);
+    void applyTheme();
+    static float pitchValueFromText (const juce::String& text);
+    static juce::String pitchTextForValue (float value);
+    static bool textRequestsRandomPitch (const juce::String& text);
     void timerCallback() override;
 
     juce::TextButton selectModeButton { "Select" };
@@ -120,6 +148,8 @@ private:
     LabeledCombo rateControl;
     LabeledCombo switchActivationControl;
     LabeledCombo switchRetriggerControl;
+    juce::Label pitchListTitle;
+    std::array<TipPitchRow, 8> tipPitchRows;
     juce::TextButton deleteButton { "Delete" };
     juce::TextButton clearButton { "Clear" };
     juce::TextButton playButton { "Play" };
@@ -134,6 +164,9 @@ private:
     bool activeSwitchSelected = false;
     bool activeRotationControl = false;
     bool activeTipSelected = false;
+    bool activePolygonSelected = false;
+    bool wireframeTheme = false;
+    int activeSides = 6;
     BuildMode activeBuildMode = BuildMode::polygon;
     BuildMode currentBuildMode = BuildMode::polygon;
 };

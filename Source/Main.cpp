@@ -2,7 +2,7 @@
 
 #include "JuceIncludes.h"
 
-class FoldingPolygonCityApplication final : public juce::JUCEApplication
+class UnfoldingApplication final : public juce::JUCEApplication
 {
 public:
     const juce::String getApplicationName() override { return JUCE_APPLICATION_NAME_STRING; }
@@ -52,4 +52,4 @@ private:
     std::unique_ptr<MainWindow> mainWindow;
 };
 
-START_JUCE_APPLICATION (FoldingPolygonCityApplication)
+START_JUCE_APPLICATION (UnfoldingApplication)

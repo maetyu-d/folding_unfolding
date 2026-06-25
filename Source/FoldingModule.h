@@ -7,6 +7,7 @@
 struct FoldingModule
 {
     static constexpr float defaultGlobalTempoBpm = 120.0f;
+    static constexpr float minRateDivision = 0.25f;
     static constexpr float maxRateDivision = 32.0f;
 
     int id = 0;
@@ -19,16 +20,25 @@ struct FoldingModule
     float phase = 0.0f;
     float rotation = 0.0f;
     float flash = 0.0f;
+    float soundingPitch = -1.0f;
+    float soundingPitchFlash = 0.0f;
     bool powered = true;
     int attachedPlatterId = -1;
     int attachedStandIndex = -1;
     int attachedPlankId = -1;
     std::array<float, 8> tipPitches {};
+    std::array<bool, 8> tipPitchRandom {};
+    std::array<float, 8> tipPitchRandomLow {};
+    std::array<float, 8> tipPitchRandomHigh {};
+    std::array<float, 8> tipProbabilities { 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f };
 
     float foldAt (double timeSeconds, float globalTempoBpm = defaultGlobalTempoBpm) const noexcept;
     float collisionRadiusAt (double timeSeconds, float globalTempoBpm = defaultGlobalTempoBpm) const noexcept;
     float angularSpeedForTempo (float globalTempoBpm) const noexcept;
     float pitchForTip (int tipIndex) const noexcept;
+    bool tipIsMuted (int tipIndex) const noexcept;
+    float randomPitchForTip (int tipIndex, juce::Random& random) const noexcept;
+    bool shouldPlayTip (int tipIndex, juce::Random& random) const noexcept;
     void initialiseTipPitches() noexcept;
     int timeSignatureNumerator() const noexcept { return sides; }
     std::vector<Vec3> floorVertices() const;

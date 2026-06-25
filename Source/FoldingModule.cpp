@@ -25,13 +25,17 @@ float FoldingModule::collisionRadiusAt (double timeSeconds, float globalTempoBpm
 float FoldingModule::angularSpeedForTempo (float globalTempoBpm) const noexcept
 {
     const auto beatsPerSecond = juce::jmax (1.0f, globalTempoBpm) / 60.0f;
-    const auto noteDivision = juce::jlimit (1.0f, maxRateDivision, rateDivision);
+    const auto noteDivision = juce::jlimit (minRateDivision, maxRateDivision, rateDivision);
     return twoPi * beatsPerSecond * noteDivision / 4.0f;
 }
 
 float FoldingModule::pitchForTip (int tipIndex) const noexcept
 {
     const auto index = static_cast<size_t> (juce::jlimit (0, 7, tipIndex));
+
+    if (tipPitchRandom[index])
+        return juce::jlimit (0.0f, 96.0f, tipPitchRandomLow[index]);
+
     const auto stored = tipPitches[index];
 
     if (stored == 0.0f)
@@ -44,13 +48,55 @@ float FoldingModule::pitchForTip (int tipIndex) const noexcept
     return 48.0f + static_cast<float> (juce::jlimit (3, 8, sides)) + scale[index];
 }
 
+bool FoldingModule::tipIsMuted (int tipIndex) const noexcept
+{
+    const auto index = static_cast<size_t> (juce::jlimit (0, 7, tipIndex));
+
+    if (tipPitchRandom[index])
+        return juce::jmax (tipPitchRandomLow[index], tipPitchRandomHigh[index]) <= 0.0f;
+
+    return pitchForTip (tipIndex) <= 0.0f;
+}
+
+float FoldingModule::randomPitchForTip (int tipIndex, juce::Random& random) const noexcept
+{
+    const auto index = static_cast<size_t> (juce::jlimit (0, 7, tipIndex));
+
+    if (! tipPitchRandom[index])
+        return pitchForTip (tipIndex);
+
+    const auto low = juce::jlimit (0.0f, 96.0f, juce::jmin (tipPitchRandomLow[index], tipPitchRandomHigh[index]));
+    const auto high = juce::jlimit (0.0f, 96.0f, juce::jmax (tipPitchRandomLow[index], tipPitchRandomHigh[index]));
+
+    if (high <= 0.0f)
+        return 0.0f;
+
+    const auto lowNote = juce::roundToInt (low);
+    const auto highNote = juce::roundToInt (high);
+
+    return static_cast<float> (lowNote + random.nextInt (highNote - lowNote + 1));
+}
+
+bool FoldingModule::shouldPlayTip (int tipIndex, juce::Random& random) const noexcept
+{
+    const auto index = static_cast<size_t> (juce::jlimit (0, 7, tipIndex));
+    const auto probability = juce::jlimit (0.0f, 1.0f, tipProbabilities[index]);
+    return probability >= 1.0f || random.nextFloat() <= probability;
+}
+
 void FoldingModule::initialiseTipPitches() noexcept
 {
     constexpr float scale[] = { 0.0f, 2.0f, 4.0f, 7.0f, 9.0f, 12.0f, 14.0f, 16.0f };
     const auto base = 48.0f + static_cast<float> (juce::jlimit (3, 8, sides));
 
     for (size_t i = 0; i < tipPitches.size(); ++i)
+    {
         tipPitches[i] = base + scale[i];
+        tipPitchRandom[i] = false;
+        tipPitchRandomLow[i] = tipPitches[i];
+        tipPitchRandomHigh[i] = tipPitches[i] + 7.0f;
+        tipProbabilities[i] = 1.0f;
+    }
 }
 
 std::vector<Vec3> FoldingModule::floorVertices() const

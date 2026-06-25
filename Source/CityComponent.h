@@ -7,6 +7,7 @@
 #include "SonicEvent.h"
 
 #include <functional>
+#include <atomic>
 #include <map>
 #include <set>
 #include <vector>
@@ -42,6 +43,19 @@ public:
     bool canPasteSelection() const;
     bool copySelectionToClipboard() const;
     bool pasteSelectionFromClipboard();
+    CityViewMode currentViewMode() const;
+    void setViewMode (CityViewMode mode);
+    bool isTriggerTelemetryVisible() const noexcept;
+    void setTriggerTelemetryVisible (bool shouldBeVisible);
+    bool areActivationRingsVisible() const noexcept;
+    void setActivationRingsVisible (bool shouldBeVisible);
+    bool areSoundingNotesVisible() const noexcept;
+    void setSoundingNotesVisible (bool shouldBeVisible);
+    bool isColourWireframeModeEnabled() const noexcept;
+    void setColourWireframeModeEnabled (bool shouldBeEnabled);
+    bool isUiVisible() const noexcept;
+    void setUiVisible (bool shouldBeVisible);
+    void armSoundTriggers() noexcept;
 
     std::function<void (SonicEventType type, int sidesA, int sidesB, float foldA, float foldB, float pitchOverride)> onCitySound;
 
@@ -65,16 +79,16 @@ private:
     bool findAvailableMount (Vec2 worldPosition, double timeSeconds, float radius, int& platterId, int& standIndex) const;
     bool findAvailablePlankSocket (Vec2 worldPosition, float radius, int& plankId) const;
     bool findTipAt (juce::Point<float> screenPoint, int& moduleId, int& tipIndex) const;
-    void updateDemoSectionAutomation (double timeSeconds);
-    void setDemoSwitchState (int switchId, bool powered);
-    void announcePowerChange (PowerSwitch& powerSwitch, int sourceSides, float sourceFold, double timeSeconds);
+    void announcePowerChange (PowerSwitch& powerSwitch, int sourceSides, float sourceFold, double timeSeconds, float pitchOverride = -1.0f);
     void flashConnectedTargets (int switchId, float amount);
     void addTipTriggerCue (const FoldingModule& module, Vec3 tip, const PowerSwitch& powerSwitch, bool muted = false, bool contactOnly = false);
     void addTipContactCue (const FoldingModule& a, Vec3 tipA, const FoldingModule& b, Vec3 tipB, bool muted, bool contactOnly);
+    void paintSoundingNotes (juce::Graphics& g, const IsoProjector& view);
+    void paintActivationRings (juce::Graphics& g, const IsoProjector& view);
+    void paintTriggerTelemetry (juce::Graphics& g, const IsoProjector& view);
     void triggerCitySound (SonicEventType type, int sidesA, int sidesB, float foldA, float foldB, float pitchOverride = -1.0f);
     void configureToolbar();
     void syncToolbar();
-    void seedDemoCity();
     CityRenderState createRenderState() const;
 
     void setSelectedSides (int sides);
@@ -86,6 +100,10 @@ private:
     void setSelectedOrDefaultPhaseDegrees (float phaseDegrees);
     void setSelectedRotationDegrees (float rotationDegrees);
     void setSelectedTipPitch (float midiNote);
+    void setSelectedTipPitch (int tipIndex, float midiNote);
+    void setSelectedTipRandom (int tipIndex, bool random);
+    void setSelectedTipRandomRange (int tipIndex, float low, float high);
+    void setSelectedTipProbability (int tipIndex, float probability);
     void setBuildMode (CityToolbar::BuildMode mode);
     void setSelectedOrDefaultPlatterStands (int stands);
     void setSelectedOrDefaultPlatterDiameter (float diameter);
@@ -174,12 +192,14 @@ private:
     double lastFrameTimeSeconds = 0.0;
     double transportTimeSeconds = 0.0;
     bool transportPlaying = true;
-    double powerSwitchArmedTimeSeconds = 0.0;
+    bool triggerTelemetryVisible = false;
+    bool activationRingsVisible = false;
+    bool soundingNotesVisible = true;
+    bool colourWireframeMode = false;
+    bool uiVisible = true;
     double lastCollisionSoundTimeSeconds = -1.0;
-    int demoVerseSwitchId = -1;
-    int demoChorusSwitchId = -1;
-    int demoBridgeSwitchId = -1;
-    int demoLastSectionIndex = -1;
+    std::atomic<bool> soundTriggersArmed { false };
+    std::atomic<bool> soundTriggerResetRequested { true };
     int renderWidth = 1;
     int renderHeight = 1;
     std::set<std::pair<int, int>> activeCollisions;

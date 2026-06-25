@@ -37,6 +37,7 @@ struct CityRenderState
     juce::Point<float> pan;
     float zoom = 1.0f;
     CityViewMode viewMode = CityViewMode::isometric;
+    bool colourWireframeMode = false;
     int width = 1;
     int height = 1;
     int selectedModuleId = -1;
@@ -97,6 +98,7 @@ private:
     void addTipTriggerCues (const CityRenderState& state);
     void addSelectionHandles (const CityRenderState& state);
     void addGridLot (Vec2 centre, float footprint, float elevation, juce::Colour colour, bool selected, bool powered);
+    void addWireCircle (Vec2 centre, float radius, float elevation, juce::Colour colour, float selected = 0.0f, float flash = 0.0f, int segments = 32);
     void addModule (const FoldingModule& module, const CityRenderState& state);
     void addPlatter (const FairgroundPlatter& platter, const CityRenderState& state);
     void addPlatterDisc (const FairgroundPlatter& platter, const CityRenderState& state, bool selected);
@@ -105,6 +107,7 @@ private:
     void addFloor (const FoldingModule& module, bool selected);
     void addFlaps (const FoldingModule& module, double timeSeconds, float globalTempoBpm, bool selected);
     void addModuleOutlines (const FoldingModule& module, double timeSeconds, float globalTempoBpm, bool selected);
+    void addModuleTriggerLight (const FoldingModule& module, bool selected);
     void addHandleRing (Vec2 centre, float radius, float elevation, float phase, juce::Colour colour);
     void addCablePulse (Vec3 a, Vec3 b, Vec3 c, float progress, juce::Colour colour, float intensity);
 
@@ -157,4 +160,5 @@ private:
     std::vector<Vertex> blockOutlineVertices;
     std::vector<Vertex> outlineVertices;
     bool collectingBlockGeometry = false;
+    bool colourWireframeMode = false;
 };

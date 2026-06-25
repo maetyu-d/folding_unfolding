@@ -21,6 +21,27 @@ float gridSquaresForLength (float length) noexcept
     return static_cast<float> (juce::jmax (1, juce::roundToInt (length / buildGridSize)));
 }
 
+float squaredDistance (Vec2 a, Vec2 b) noexcept
+{
+    const auto dx = a.x - b.x;
+    const auto dy = a.y - b.y;
+    return dx * dx + dy * dy;
+}
+
+float polygonTipReach (int sides, float radius, float flapDepth) noexcept
+{
+    const auto clampedSides = juce::jlimit (3, 8, sides);
+    const auto apothem = radius * std::cos (juce::MathConstants<float>::pi / static_cast<float> (clampedSides));
+    return apothem + flapDepth;
+}
+
+float polygonRadiusForTipReach (int sides, float reach, float flapDepth) noexcept
+{
+    const auto clampedSides = juce::jlimit (3, 8, sides);
+    const auto apothemScale = std::cos (juce::MathConstants<float>::pi / static_cast<float> (clampedSides));
+    return juce::jlimit (24.0f, 1300.0f, (reach - flapDepth) / juce::jmax (0.001f, apothemScale));
+}
+
 float moduleRadiusForGridSquares (float squares, float flapDepth) noexcept
 {
     const auto cells = juce::jlimit (1, 28, juce::roundToInt (squares));
@@ -73,6 +94,15 @@ bool boolProperty (const juce::DynamicObject& object, const char* name, bool fal
     return value.isVoid() ? fallback : static_cast<bool> ((bool) value);
 }
 
+juce::String noteNameForMidi (float midiNote)
+{
+    static constexpr const char* names[] = { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
+    const auto note = juce::roundToInt (midiNote);
+    const auto pitchClass = ((note % 12) + 12) % 12;
+    const auto octave = note / 12 - 1;
+    return juce::String (names[pitchClass]) + juce::String (octave);
+}
+
 CityObjectKind objectKindFromInt (int value)
 {
     if (value < static_cast<int> (CityObjectKind::none)
@@ -109,297 +139,6 @@ CityComponent::CityComponent()
     openGLContext.attachTo (*this);
 
     startTimerHz (45);
-}
-
-void CityComponent::seedDemoCity()
-{
-    city.clear();
-    activeCollisions.clear();
-    activePowerSwitchTouches.clear();
-    activeTipContacts.clear();
-    tipContactReleaseTimes.clear();
-    cableSourceSwitchId = -1;
-    cableSourcePowerSourceId = -1;
-    demoVerseSwitchId = -1;
-    demoChorusSwitchId = -1;
-    demoBridgeSwitchId = -1;
-    demoLastSectionIndex = -1;
-    powerSwitchArmedTimeSeconds = currentTimeSeconds() + 3.0;
-
-    globalTempoBpm = 92.0f;
-    projector.zoom = 0.28f;
-    projector.pan = { -10.0f, -150.0f };
-    selectedId = -1;
-    selectedKind = CityObjectKind::none;
-    buildMode = CityToolbar::BuildMode::select;
-
-    defaultSides = 6;
-    defaultRadius = 54.0f;
-    defaultFlapDepth = 32.0f;
-    defaultRateDivision = 4.0f;
-    defaultPhase = 0.0f;
-    defaultPlatterStands = 6;
-    defaultPlatterDiameter = 300.0f;
-    defaultPlatterRateDivision = 0.25f;
-    defaultPlatterPhase = 0.0f;
-    defaultBlockLevels = 5;
-    defaultBlockSize = 112.0f;
-
-    auto addBlock = [this] (Vec2 position, float size, int levels) -> int
-    {
-        auto& block = city.addBlock (position, size, levels);
-        return block.id;
-    };
-
-    auto addRoof = [this] (Vec2 position, int sides, float radius, float flapDepth, float rate, float phase) -> int
-    {
-        auto& module = city.addModule (position, sides, radius, flapDepth, rate, phase);
-        module.flash = 0.18f;
-        return module.id;
-    };
-
-    auto addSpin = [this] (Vec2 position,
-                           int stands,
-                           float diameter,
-                           float rate,
-                           float phase,
-                           auto&&...) -> int
-    {
-        auto& platter = city.addPlatter (position, stands, diameter, rate, phase);
-        platter.flash = 0.12f;
-        return platter.id;
-    };
-
-    constexpr auto pi = juce::MathConstants<float>::pi;
-
-    addBlock ({ -360.0f, -120.0f }, 132.0f, 4);
-    addBlock ({ -216.0f, -132.0f }, 120.0f, 7);
-    addBlock ({ -74.0f, -138.0f }, 150.0f, 11);
-    addBlock ({ 94.0f, -132.0f }, 132.0f, 9);
-    addBlock ({ 246.0f, -104.0f }, 126.0f, 6);
-    addBlock ({ -302.0f, 38.0f }, 112.0f, 8);
-    addBlock ({ -154.0f, 38.0f }, 160.0f, 13);
-    addBlock ({ 34.0f, 28.0f }, 142.0f, 15);
-    addBlock ({ 204.0f, 42.0f }, 132.0f, 10);
-    addBlock ({ 354.0f, 76.0f }, 112.0f, 5);
-    addBlock ({ -342.0f, 202.0f }, 104.0f, 5);
-    addBlock ({ -200.0f, 222.0f }, 138.0f, 8);
-    addBlock ({ -28.0f, 228.0f }, 126.0f, 12);
-    addBlock ({ 134.0f, 232.0f }, 154.0f, 7);
-    addBlock ({ 314.0f, 218.0f }, 124.0f, 9);
-    addBlock ({ -512.0f, -210.0f }, 150.0f, 4);
-    addBlock ({ -638.0f, -24.0f }, 118.0f, 6);
-    addBlock ({ -574.0f, 396.0f }, 132.0f, 5);
-    addBlock ({ -286.0f, 526.0f }, 146.0f, 7);
-    addBlock ({ 40.0f, 548.0f }, 130.0f, 6);
-    addBlock ({ 386.0f, 506.0f }, 152.0f, 8);
-    addBlock ({ 564.0f, 326.0f }, 128.0f, 6);
-    addBlock ({ 576.0f, -80.0f }, 138.0f, 5);
-    addBlock ({ 334.0f, -292.0f }, 124.0f, 4);
-
-    const auto crownA = addRoof ({ -74.0f, -138.0f }, 8, 72.0f, 46.0f, 2.0f, 0.10f * pi);
-    const auto crownB = addRoof ({ 34.0f, 28.0f }, 7, 68.0f, 42.0f, 3.0f, 0.72f * pi);
-    const auto crownC = addRoof ({ -154.0f, 38.0f }, 6, 62.0f, 40.0f, 4.0f, 1.35f * pi);
-    const auto crownD = addRoof ({ 204.0f, 42.0f }, 5, 58.0f, 36.0f, 8.0f / 3.0f, 1.85f * pi);
-    const auto crownE = addRoof ({ 314.0f, 218.0f }, 4, 58.0f, 38.0f, 4.0f, 0.45f * pi);
-    const auto crownF = addRoof ({ -216.0f, -132.0f }, 3, 54.0f, 38.0f, 6.0f, 1.20f * pi);
-    const auto crownG = addRoof ({ 134.0f, 232.0f }, 8, 64.0f, 42.0f, 16.0f / 3.0f, 0.25f * pi);
-    const auto crownH = addRoof ({ -200.0f, 222.0f }, 5, 56.0f, 34.0f, 8.0f, 1.60f * pi);
-
-    const auto plazaWest = addSpin ({ -318.0f, 238.0f }, 8, 340.0f, 0.25f, 0.08f * pi, 6, 34.0f, 22.0f);
-    const auto plazaEast = addSpin ({ 128.0f, 320.0f }, 7, 318.0f, 0.5f, 0.62f * pi, 5, 32.0f, 20.0f);
-    const auto skyWheel = addSpin ({ -154.0f, 38.0f }, 6, 188.0f, 0.125f, 1.10f * pi, 8, 24.0f, 16.0f);
-    const auto roofCarousel = addSpin ({ 34.0f, 28.0f }, 5, 172.0f, 0.25f, 0.36f * pi, 4, 28.0f, 18.0f);
-
-    const auto streetA = addRoof ({ -486.0f, 40.0f }, 3, 50.0f, 34.0f, 2.0f, 0.00f);
-    const auto streetB = addRoof ({ -426.0f, 358.0f }, 4, 54.0f, 34.0f, 3.0f, 0.52f * pi);
-    const auto streetC = addRoof ({ 462.0f, 48.0f }, 8, 52.0f, 32.0f, 4.0f, 1.15f * pi);
-    const auto streetD = addRoof ({ 422.0f, 340.0f }, 7, 50.0f, 32.0f, 6.0f, 1.72f * pi);
-    const auto streetE = addRoof ({ -42.0f, 410.0f }, 6, 56.0f, 36.0f, 8.0f, 0.88f * pi);
-    const auto streetF = addRoof ({ 226.0f, -238.0f }, 5, 52.0f, 35.0f, 4.0f, 1.42f * pi);
-    const auto outerA = addRoof ({ -638.0f, -24.0f }, 8, 58.0f, 36.0f, 2.0f, 0.18f * pi);
-    const auto outerB = addRoof ({ -574.0f, 396.0f }, 6, 62.0f, 38.0f, 3.0f, 0.72f * pi);
-    const auto outerC = addRoof ({ -286.0f, 526.0f }, 4, 58.0f, 36.0f, 4.0f, 1.24f * pi);
-    const auto outerD = addRoof ({ 40.0f, 548.0f }, 7, 60.0f, 38.0f, 6.0f, 1.78f * pi);
-    const auto outerE = addRoof ({ 386.0f, 506.0f }, 3, 56.0f, 40.0f, 8.0f, 0.44f * pi);
-    const auto outerF = addRoof ({ 564.0f, 326.0f }, 5, 58.0f, 36.0f, 4.0f, 1.06f * pi);
-    const auto outerG = addRoof ({ 576.0f, -80.0f }, 8, 56.0f, 34.0f, 3.0f, 1.60f * pi);
-    const auto outerH = addRoof ({ 334.0f, -292.0f }, 6, 54.0f, 34.0f, 2.0f, 0.92f * pi);
-    const auto northLoop = addSpin ({ -238.0f, 520.0f }, 6, 270.0f, 0.25f, 0.30f * pi, 7, 30.0f, 19.0f);
-    const auto southLoop = addSpin ({ 390.0f, -230.0f }, 5, 238.0f, 0.5f, 1.35f * pi, 4, 30.0f, 20.0f);
-
-    std::vector<int> verseModules;
-    std::vector<int> chorusModules;
-    std::vector<int> bridgeModules;
-    std::vector<int> versePlatters;
-    std::vector<int> chorusPlatters;
-    std::vector<int> bridgePlatters;
-
-    for (int row = 0; row < 4; ++row)
-    {
-        for (int col = 0; col < 5; ++col)
-        {
-            const auto x = -1780.0f + static_cast<float> (col) * 154.0f + static_cast<float> (row % 2) * 38.0f;
-            const auto y = -620.0f + static_cast<float> (row) * 178.0f;
-            const auto sides = 3 + ((row + col) % 3);
-            const auto level = 2 + ((row * 2 + col) % 6);
-
-            addBlock ({ x, y }, 96.0f + static_cast<float> ((row + col) % 3) * 14.0f, level);
-            verseModules.push_back (addRoof ({ x, y },
-                                             sides,
-                                             38.0f + static_cast<float> ((row + col) % 2) * 8.0f,
-                                             26.0f + static_cast<float> (col % 3) * 4.0f,
-                                             2.0f + static_cast<float> ((row + col) % 4),
-                                             static_cast<float> (row * 5 + col) * 0.17f * pi));
-        }
-    }
-
-    for (int i = 0; i < 4; ++i)
-    {
-        versePlatters.push_back (addSpin ({ -1740.0f + static_cast<float> (i) * 226.0f,
-                                            128.0f + static_cast<float> (i % 2) * 136.0f },
-                                          3 + i,
-                                          178.0f + static_cast<float> (i) * 22.0f,
-                                          i < 2 ? 0.25f : 0.5f,
-                                          static_cast<float> (i) * 0.36f * pi,
-                                          3 + (i % 3),
-                                          24.0f + static_cast<float> (i) * 2.0f,
-                                          16.0f + static_cast<float> (i) * 2.0f));
-    }
-
-    for (int ring = 0; ring < 3; ++ring)
-    {
-        const auto count = 8 + ring * 2;
-        const auto ringRadius = 330.0f + static_cast<float> (ring) * 178.0f;
-
-        for (int i = 0; i < count; ++i)
-        {
-            const auto angle = juce::MathConstants<float>::twoPi * static_cast<float> (i) / static_cast<float> (count)
-                             + static_cast<float> (ring) * 0.17f;
-            const auto x = 1780.0f + std::cos (angle) * ringRadius;
-            const auto y = 180.0f + std::sin (angle) * ringRadius * 0.72f;
-            const auto sides = 6 + ((i + ring) % 3);
-
-            addBlock ({ x, y },
-                      112.0f + static_cast<float> ((i + ring) % 4) * 18.0f,
-                      6 + ((i * 2 + ring) % 9));
-            chorusModules.push_back (addRoof ({ x, y },
-                                              sides,
-                                              56.0f + static_cast<float> ((i + ring) % 3) * 10.0f,
-                                              36.0f + static_cast<float> (i % 4) * 4.0f,
-                                              3.0f + static_cast<float> ((i + ring) % 6),
-                                              static_cast<float> (i + ring * 3) * 0.21f * pi));
-        }
-    }
-
-    chorusPlatters.push_back (addSpin ({ 1780.0f, 180.0f }, 8, 520.0f, 0.25f, 0.15f * pi, 8, 38.0f, 24.0f));
-    chorusPlatters.push_back (addSpin ({ 2080.0f, 416.0f }, 7, 390.0f, 0.5f, 0.72f * pi, 7, 36.0f, 23.0f));
-    chorusPlatters.push_back (addSpin ({ 2070.0f, -114.0f }, 6, 360.0f, 0.25f, 1.22f * pi, 6, 34.0f, 22.0f));
-    chorusPlatters.push_back (addSpin ({ 1568.0f, 434.0f }, 5, 310.0f, 0.125f, 0.52f * pi, 5, 32.0f, 21.0f));
-
-    for (int row = 0; row < 3; ++row)
-    {
-        for (int col = 0; col < 4; ++col)
-        {
-            const auto x = -280.0f + static_cast<float> (col) * 188.0f;
-            const auto y = 1420.0f + static_cast<float> (row) * 164.0f;
-            const auto sides = 4 + ((row + col) % 4);
-
-            addBlock ({ x, y }, 106.0f + static_cast<float> ((row + col) % 2) * 20.0f, 4 + ((row + col * 2) % 7));
-            bridgeModules.push_back (addRoof ({ x, y },
-                                              sides,
-                                              44.0f + static_cast<float> (row) * 6.0f,
-                                              28.0f + static_cast<float> (col) * 3.0f,
-                                              4.0f + static_cast<float> ((row + col) % 4),
-                                              static_cast<float> (row * 4 + col) * 0.19f * pi));
-        }
-    }
-
-    bridgePlatters.push_back (addSpin ({ -70.0f, 1610.0f }, 4, 260.0f, 0.25f, 0.90f * pi, 4, 30.0f, 20.0f));
-    bridgePlatters.push_back (addSpin ({ 428.0f, 1588.0f }, 6, 300.0f, 0.5f, 1.42f * pi, 6, 32.0f, 20.0f));
-
-    const auto civicSource = city.addPowerSource ({ -512.0f, -210.0f }, true, 78.0f).id;
-    const auto westSource = city.addPowerSource ({ -520.0f, 118.0f }, true, 60.0f).id;
-    const auto eastSource = city.addPowerSource ({ 506.0f, 182.0f }, true, 60.0f).id;
-    const auto towerSource = city.addPowerSource ({ -4.0f, -252.0f }, true, 62.0f).id;
-    const auto northSource = city.addPowerSource ({ -392.0f, 626.0f }, true, 58.0f).id;
-    const auto southSource = city.addPowerSource ({ 514.0f, -286.0f }, true, 58.0f).id;
-    const auto verseSource = city.addPowerSource ({ -1940.0f, -290.0f }, true, 66.0f).id;
-    const auto chorusSource = city.addPowerSource ({ 2310.0f, 210.0f }, true, 82.0f).id;
-    const auto bridgeSource = city.addPowerSource ({ -420.0f, 1740.0f }, true, 62.0f).id;
-
-    const auto westSwitch = city.addPowerSwitch ({ -338.0f, 82.0f }, 250.0f, false, 44.0f).id;
-    const auto eastSwitch = city.addPowerSwitch ({ 236.0f, 130.0f }, 245.0f, false, 44.0f).id;
-    const auto towerSwitch = city.addPowerSwitch ({ -6.0f, -64.0f }, 270.0f, false, 40.0f).id;
-    const auto quietSwitch = city.addPowerSwitch ({ 406.0f, 256.0f }, 205.0f, false, 38.0f).id;
-    const auto northSwitch = city.addPowerSwitch ({ -236.0f, 438.0f }, 250.0f, false, 40.0f).id;
-    const auto southSwitch = city.addPowerSwitch ({ 398.0f, -164.0f }, 220.0f, false, 40.0f).id;
-    const auto verseSwitch = city.addPowerSwitch ({ -1470.0f, -74.0f }, 430.0f, true, 44.0f).id;
-    const auto chorusSwitch = city.addPowerSwitch ({ 1780.0f, 180.0f }, 590.0f, false, 48.0f).id;
-    const auto bridgeSwitch = city.addPowerSwitch ({ 94.0f, 1560.0f }, 390.0f, false, 42.0f).id;
-
-    demoVerseSwitchId = verseSwitch;
-    demoChorusSwitchId = chorusSwitch;
-    demoBridgeSwitchId = bridgeSwitch;
-
-    city.connectPowerFeed (westSource, westSwitch);
-    city.connectPowerFeed (towerSource, towerSwitch);
-    city.connectPowerFeed (civicSource, eastSwitch);
-    city.connectPowerFeed (eastSource, quietSwitch);
-    city.connectPowerFeed (northSource, northSwitch);
-    city.connectPowerFeed (southSource, southSwitch);
-    city.connectPowerFeed (verseSource, verseSwitch);
-    city.connectPowerFeed (chorusSource, chorusSwitch);
-    city.connectPowerFeed (bridgeSource, bridgeSwitch);
-
-    city.connectPowerCable (westSwitch, CityObjectKind::platter, plazaWest);
-    city.connectPowerCable (westSwitch, CityObjectKind::module, crownH);
-    city.connectPowerCable (westSwitch, CityObjectKind::module, streetA);
-    city.connectPowerCable (westSwitch, CityObjectKind::module, streetB);
-    city.connectPowerCable (eastSwitch, CityObjectKind::platter, plazaEast);
-    city.connectPowerCable (eastSwitch, CityObjectKind::module, crownG);
-    city.connectPowerCable (eastSwitch, CityObjectKind::module, streetE);
-    city.connectPowerCable (towerSwitch, CityObjectKind::platter, skyWheel);
-    city.connectPowerCable (towerSwitch, CityObjectKind::platter, roofCarousel);
-    city.connectPowerCable (towerSwitch, CityObjectKind::module, crownA);
-    city.connectPowerCable (towerSwitch, CityObjectKind::module, crownB);
-    city.connectPowerCable (towerSwitch, CityObjectKind::module, crownC);
-    city.connectPowerCable (quietSwitch, CityObjectKind::module, crownD);
-    city.connectPowerCable (quietSwitch, CityObjectKind::module, crownE);
-    city.connectPowerCable (quietSwitch, CityObjectKind::module, streetC);
-    city.connectPowerCable (quietSwitch, CityObjectKind::module, streetD);
-    city.connectPowerCable (quietSwitch, CityObjectKind::module, streetF);
-    city.connectPowerCable (westSwitch, CityObjectKind::module, crownF);
-    city.connectPowerCable (northSwitch, CityObjectKind::platter, northLoop);
-    city.connectPowerCable (northSwitch, CityObjectKind::module, outerB);
-    city.connectPowerCable (northSwitch, CityObjectKind::module, outerC);
-    city.connectPowerCable (northSwitch, CityObjectKind::module, outerD);
-    city.connectPowerCable (northSwitch, CityObjectKind::module, outerE);
-    city.connectPowerCable (southSwitch, CityObjectKind::platter, southLoop);
-    city.connectPowerCable (southSwitch, CityObjectKind::module, outerF);
-    city.connectPowerCable (southSwitch, CityObjectKind::module, outerG);
-    city.connectPowerCable (southSwitch, CityObjectKind::module, outerH);
-    city.connectPowerCable (westSwitch, CityObjectKind::module, outerA);
-
-    for (const auto moduleId : verseModules)
-        city.connectPowerCable (verseSwitch, CityObjectKind::module, moduleId);
-    for (const auto platterId : versePlatters)
-        city.connectPowerCable (verseSwitch, CityObjectKind::platter, platterId);
-
-    for (const auto moduleId : chorusModules)
-        city.connectPowerCable (chorusSwitch, CityObjectKind::module, moduleId);
-    for (const auto platterId : chorusPlatters)
-        city.connectPowerCable (chorusSwitch, CityObjectKind::platter, platterId);
-
-    for (const auto moduleId : bridgeModules)
-        city.connectPowerCable (bridgeSwitch, CityObjectKind::module, moduleId);
-    for (const auto platterId : bridgePlatters)
-        city.connectPowerCable (bridgeSwitch, CityObjectKind::platter, platterId);
-
-    selectedId = civicSource;
-    selectedKind = CityObjectKind::powerSource;
-    cableSourcePowerSourceId = civicSource;
-    buildMode = CityToolbar::BuildMode::cable;
 }
 
 CityComponent::~CityComponent()
@@ -473,19 +212,49 @@ void CityComponent::paint (juce::Graphics& g)
 
     for (const auto& cue : tipTriggerCues)
     {
-        const auto life = cue.contactOnly ? 0.34f : 0.82f;
+        const auto life = cue.contactOnly ? (cue.tipTip ? 0.20f : 0.16f)
+                                          : (cue.tipTip ? 0.26f : 0.18f);
         const auto t = juce::jlimit (0.0f, 1.0f, cue.age / life);
-        const auto alpha = 1.0f - smoothStep01 (t);
+        const auto alpha = std::pow (1.0f - smoothStep01 (t), 2.05f);
         const auto tip = view.project (cue.tip);
         const auto target = view.project (cue.target);
         const auto colour = cue.muted ? juce::Colour (0xffd8dde7)
                           : cue.tipTip ? juce::Colour (0xff58d7ff)
-                          : cue.contactOnly ? juce::Colour (0xff60f0b2)
-                                            : juce::Colour (0xffffcf5f);
+                          : cue.contactOnly ? juce::Colour (0xff22f6ff)
+                                            : juce::Colour (0xff35e7ff);
         const auto hot = cue.muted ? juce::Colour (0xff9aa3b5)
                        : cue.tipTip ? juce::Colour (0xffffffff)
-                       : cue.contactOnly ? juce::Colour (0xff8fffe8)
-                                         : juce::Colour (0xffff6f91);
+                       : cue.contactOnly ? juce::Colour (0xffffffff)
+                                         : juce::Colour (0xffff4fd2);
+        const auto delta = target - tip;
+        const auto length = juce::jmax (0.001f, tip.getDistanceFrom (target));
+        const auto along = delta / length;
+        const auto across = juce::Point<float> { -along.y, along.x };
+
+        auto drawDiamond = [&g] (juce::Point<float> centre, float size, juce::Colour diamondColour, float thickness)
+        {
+            juce::Path diamond;
+            diamond.startNewSubPath (centre.x, centre.y - size);
+            diamond.lineTo (centre.x + size, centre.y);
+            diamond.lineTo (centre.x, centre.y + size);
+            diamond.lineTo (centre.x - size, centre.y);
+            diamond.closeSubPath();
+            g.setColour (diamondColour);
+            g.strokePath (diamond, juce::PathStrokeType (thickness, juce::PathStrokeType::JointStyle::mitered));
+        };
+
+        auto drawBracket = [&g, along, across] (juce::Point<float> centre, float size, juce::Colour bracketColour, float thickness)
+        {
+            const auto half = size * 0.5f;
+            const auto arm = size * 0.34f;
+            const auto a = centre + across * half - along * arm;
+            const auto b = centre + across * half + along * arm;
+            const auto c = centre - across * half - along * arm;
+            const auto d = centre - across * half + along * arm;
+            g.setColour (bracketColour);
+            g.drawLine ({ a, b }, thickness);
+            g.drawLine ({ c, d }, thickness);
+        };
 
         if (cue.contactOnly)
         {
@@ -498,18 +267,6 @@ void CityComponent::paint (juce::Graphics& g)
                                             1.0f);
                 const auto reticle = 9.0f + beat * 4.0f;
                 const auto signal = tip + (target - tip) * pulse;
-
-                auto drawDiamond = [&g] (juce::Point<float> centre, float size, juce::Colour diamondColour, float thickness)
-                {
-                    juce::Path diamond;
-                    diamond.startNewSubPath (centre.x, centre.y - size);
-                    diamond.lineTo (centre.x + size, centre.y);
-                    diamond.lineTo (centre.x, centre.y + size);
-                    diamond.lineTo (centre.x - size, centre.y);
-                    diamond.closeSubPath();
-                    g.setColour (diamondColour);
-                    g.strokePath (diamond, juce::PathStrokeType (thickness));
-                };
 
                 g.setColour (colour.withAlpha (0.28f * alpha));
                 g.drawLine ({ tip, target }, 5.0f);
@@ -541,49 +298,49 @@ void CityComponent::paint (juce::Graphics& g)
                 continue;
             }
 
-            g.setColour (colour.withAlpha (0.28f * alpha));
-            g.drawLine ({ tip, target }, 8.0f);
-            g.setColour (hot.withAlpha (0.92f * alpha));
-            g.drawLine ({ tip, target }, 3.0f);
-
-            const auto r = 13.0f + 8.0f * (1.0f - alpha);
-            g.setColour (hot.withAlpha (0.22f * alpha));
-            g.fillEllipse (tip.x - r, tip.y - r, r * 2.0f, r * 2.0f);
-            g.fillEllipse (target.x - r, target.y - r, r * 2.0f, r * 2.0f);
-            g.setColour (hot.withAlpha (0.96f * alpha));
-            g.drawEllipse (tip.x - r, tip.y - r, r * 2.0f, r * 2.0f, 3.0f);
-            g.drawEllipse (target.x - r, target.y - r, r * 2.0f, r * 2.0f, 3.0f);
+            const auto start = tip + delta * 0.12f;
+            const auto end = tip + delta * (0.72f + 0.24f * (1.0f - t));
+            g.setColour (colour.withAlpha (0.64f * alpha));
+            g.drawLine ({ start, end }, 3.0f);
+            g.setColour (hot.withAlpha (0.86f * alpha));
+            g.drawLine ({ start + across * 3.5f, end + across * 3.5f }, 1.2f);
+            drawDiamond (tip, 7.0f + 2.0f * alpha, hot.withAlpha (0.9f * alpha), 1.7f);
+            drawBracket (target, 15.0f + 5.0f * alpha, colour.withAlpha (0.9f * alpha), 1.8f);
 
             continue;
         }
 
-        const auto r = (cue.muted ? 18.0f : 22.0f) + (cue.muted ? 28.0f : 42.0f) * t;
-        g.setColour (colour.withAlpha (0.20f * alpha));
-        g.fillEllipse (tip.x - r, tip.y - r, r * 2.0f, r * 2.0f);
-        g.setColour (hot.withAlpha (0.98f * alpha));
-        g.drawEllipse (tip.x - r, tip.y - r, r * 2.0f, r * 2.0f, cue.muted ? 4.0f : 5.0f);
+        const auto start = tip + delta * 0.08f;
+        const auto traceEnd = tip + delta * juce::jmin (1.0f, 0.52f + t * 0.86f);
+        const auto lane = across * (cue.muted ? 2.0f : 3.0f);
+        g.setColour (colour.withAlpha (0.66f * alpha));
+        g.drawLine ({ start - lane, traceEnd - lane }, cue.muted ? 2.2f : 3.4f);
+        g.setColour (hot.withAlpha (0.96f * alpha));
+        g.drawLine ({ start + lane, traceEnd + lane }, cue.muted ? 1.3f : 1.8f);
+
+        drawDiamond (tip, cue.muted ? 7.0f : 8.5f, hot.withAlpha (0.96f * alpha), cue.muted ? 1.8f : 2.2f);
 
         if (cue.muted)
         {
-            const auto x = r * 0.58f;
-            g.drawLine (tip.x - x, tip.y - x, tip.x + x, tip.y + x, 5.0f);
-            g.drawLine (tip.x + x, tip.y - x, tip.x - x, tip.y + x, 5.0f);
+            const auto x = 7.0f + 3.0f * alpha;
+            g.drawLine (tip.x - x, tip.y - x, tip.x + x, tip.y + x, 2.2f);
+            g.drawLine (tip.x + x, tip.y - x, tip.x - x, tip.y + x, 2.2f);
         }
         else
         {
-            g.setColour (colour.withAlpha (0.30f * alpha));
-            g.drawLine ({ tip, target }, 12.0f);
-            g.setColour (hot.withAlpha (0.96f * alpha));
-            g.drawLine ({ tip, target }, 4.0f);
-
-            const auto targetRadius = 16.0f + 24.0f * alpha;
-            g.drawEllipse (target.x - targetRadius,
-                           target.y - targetRadius,
-                           targetRadius * 2.0f,
-                           targetRadius * 2.0f,
-                           4.0f);
+            drawBracket (target, 18.0f + 6.0f * alpha, hot.withAlpha (0.94f * alpha), 2.2f);
+            drawDiamond (target, 5.0f + 2.0f * alpha, colour.withAlpha (0.9f * alpha), 1.4f);
         }
     }
+
+    if (activationRingsVisible)
+        paintActivationRings (g, view);
+
+    if (soundingNotesVisible)
+        paintSoundingNotes (g, view);
+
+    if (triggerTelemetryVisible)
+        paintTriggerTelemetry (g, view);
 
     if (! mouseInCanvas)
         return;
@@ -857,7 +614,7 @@ void CityComponent::paint (juce::Graphics& g)
             const auto tip = view.project (flaps[i][2]);
             const auto selected = selectedKind == CityObjectKind::module && selectedId == module.id && selectedTipIndex == tipIndex;
             const auto hovered = hoverTipModuleId == module.id && hoverTipIndex == tipIndex;
-            const auto muted = module.pitchForTip (tipIndex) <= 0.0f;
+            const auto muted = module.tipIsMuted (tipIndex);
             const auto radius = selected ? 16.0f : hovered ? 14.0f : 10.0f;
             const auto colour = selected ? juce::Colour (0xff60f0b2)
                               : hovered ? juce::Colour (0xffffcf5f)
@@ -908,13 +665,14 @@ void CityComponent::resized()
         projector.centre = getLocalBounds().toFloat().getCentre();
     }
 
-    const auto toolbarWidth = juce::jmin (getWidth() - 28, 372);
+    const auto toolbarWidth = juce::jmin (getWidth() - 28,
+                                          selectedKind == CityObjectKind::module ? 500 : 372);
     auto toolbarHeight = 506;
 
     if (buildMode == CityToolbar::BuildMode::select && selectedKind == CityObjectKind::none)
         toolbarHeight = 270;
-    else if (selectedKind == CityObjectKind::module && selectedTipIndex >= 0)
-        toolbarHeight = 596;
+    else if (selectedKind == CityObjectKind::module)
+        toolbarHeight = 820;
     else if (buildMode == CityToolbar::BuildMode::platter || selectedKind == CityObjectKind::platter)
         toolbarHeight = 566;
     else if (buildMode == CityToolbar::BuildMode::plank || selectedKind == CityObjectKind::plank)
@@ -928,6 +686,7 @@ void CityComponent::resized()
           || selectedKind == CityObjectKind::powerSource)
         toolbarHeight = 352;
 
+    toolbar.setVisible (uiVisible);
     toolbar.setBounds (14, 14, toolbarWidth, juce::jmin (getHeight() - 28, toolbarHeight));
 }
 
@@ -1462,6 +1221,18 @@ bool CityComponent::keyPressed (const juce::KeyPress& key)
         return true;
     }
 
+    if (lowerText == 'o')
+    {
+        setTriggerTelemetryVisible (! triggerTelemetryVisible);
+        return true;
+    }
+
+    if (lowerText == 'r')
+    {
+        setActivationRingsVisible (! activationRingsVisible);
+        return true;
+    }
+
     if (lowerText == 'w' || lowerText == 'a' || lowerText == 's' || lowerText == 'd')
     {
         const auto step = 58.0f;
@@ -1541,7 +1312,10 @@ void CityComponent::timerCallback()
         updateAttachedStructures (transportTimeSeconds);
 
         for (auto& module : city.modules())
+        {
             module.flash = juce::jmax (0.0f, module.flash - static_cast<float> (delta * 4.4));
+            module.soundingPitchFlash = juce::jmax (0.0f, module.soundingPitchFlash - static_cast<float> (delta * 3.2));
+        }
 
         for (auto& platter : city.platters())
         {
@@ -1561,7 +1335,9 @@ void CityComponent::timerCallback()
                                               tipTriggerCues.end(),
                                               [] (const CityRenderState::TipTriggerCue& cue)
                                               {
-                                                  return cue.age >= (cue.contactOnly ? 0.34f : 0.82f);
+                                                  const auto life = cue.contactOnly ? (cue.tipTip ? 0.28f : 0.22f)
+                                                                                   : (cue.tipTip ? 0.42f : 0.30f);
+                                                  return cue.age >= life;
                                               }),
                               tipTriggerCues.end());
 
@@ -1591,8 +1367,16 @@ void CityComponent::timerCallback()
             }
         }
 
+        if (soundTriggerResetRequested.exchange (false, std::memory_order_acq_rel))
+        {
+            activeCollisions.clear();
+            activePowerSwitchTouches.clear();
+            activeTipContacts.clear();
+            tipContactReleaseTimes.clear();
+            lastCollisionSoundTimeSeconds = -1.0;
+        }
+
         updatePowerSwitches (currentTimeSeconds());
-        updateDemoSectionAutomation (currentTimeSeconds());
         updateCollisions (currentTimeSeconds());
     }
 
@@ -1800,12 +1584,25 @@ bool CityComponent::findAvailablePlankSocket (Vec2 worldPosition, float radius, 
         auto occupied = false;
 
         for (const auto& module : city.modules())
+        {
             if (module.attachedPlankId == plank.id)
+            {
                 occupied = true;
+                break;
+            }
+        }
 
-        for (const auto& platter : city.platters())
-            if (platter.attachedPlankId == plank.id)
-                occupied = true;
+        if (! occupied)
+        {
+            for (const auto& platter : city.platters())
+            {
+                if (platter.attachedPlankId == plank.id)
+                {
+                    occupied = true;
+                    break;
+                }
+            }
+        }
 
         if (occupied)
             continue;
@@ -1835,6 +1632,12 @@ bool CityComponent::findTipAt (juce::Point<float> screenPoint, int& moduleId, in
 
     for (const auto& module : city.modules())
     {
+        const auto centre = view.project ({ module.position.x, module.position.y, module.elevation });
+        const auto screenRadius = polygonTipReach (module.sides, module.radius, module.flapDepth) * view.zoom + 32.0f;
+
+        if (centre.getDistanceFrom (screenPoint) > screenRadius)
+            continue;
+
         const auto timeSeconds = module.powered ? currentTimeSeconds() : 0.0;
         const auto flaps = module.flapTriangles (timeSeconds, globalTempoBpm);
 
@@ -1858,11 +1661,21 @@ bool CityComponent::findTipAt (juce::Point<float> screenPoint, int& moduleId, in
 
 void CityComponent::updateCollisions (double timeSeconds)
 {
+    if (! soundTriggersArmed.load (std::memory_order_acquire))
+    {
+        activeCollisions.clear();
+        activeTipContacts.clear();
+        tipContactReleaseTimes.clear();
+        lastCollisionSoundTimeSeconds = -1.0;
+        return;
+    }
+
     struct CollisionProxy
     {
         CityObjectKind kind = CityObjectKind::none;
         int id = -1;
         FoldingModule module;
+        float collisionRadius = 0.0f;
     };
 
     auto keyFor = [] (const CollisionProxy& proxy)
@@ -1993,43 +1806,45 @@ void CityComponent::updateCollisions (double timeSeconds)
 
     for (const auto& module : city.modules())
         if (city.isPowered (CityObjectKind::module, module.id, module.position))
-            proxies.push_back ({ CityObjectKind::module, module.id, module });
+            proxies.push_back ({ CityObjectKind::module,
+                                 module.id,
+                                 module,
+                                 module.collisionRadiusAt (timeSeconds, globalTempoBpm) });
+
+    std::sort (proxies.begin(), proxies.end(), [] (const CollisionProxy& a, const CollisionProxy& b)
+    {
+        return a.module.position.x - a.collisionRadius < b.module.position.x - b.collisionRadius;
+    });
 
     for (size_t i = 0; i < proxies.size(); ++i)
     {
+        const auto& a = proxies[i];
+        const auto aMaxX = a.module.position.x + a.collisionRadius;
+
         for (size_t j = i + 1; j < proxies.size(); ++j)
         {
-            const auto& a = proxies[i];
             const auto& b = proxies[j];
+
+            if (b.module.position.x - b.collisionRadius > aMaxX)
+                break;
 
             if (std::abs (a.module.elevation - b.module.elevation) > 54.0f)
                 continue;
 
-            const auto collisionDistance = a.module.collisionRadiusAt (timeSeconds, globalTempoBpm)
-                                         + b.module.collisionRadiusAt (timeSeconds, globalTempoBpm);
+            const auto collisionDistance = a.collisionRadius + b.collisionRadius;
+            const auto dx = a.module.position.x - b.module.position.x;
+            const auto dy = a.module.position.y - b.module.position.y;
 
-            if (std::abs (a.module.position.x - b.module.position.x) > collisionDistance
-             || std::abs (a.module.position.y - b.module.position.y) > collisionDistance)
+            if (std::abs (dx) > collisionDistance || std::abs (dy) > collisionDistance)
                 continue;
 
-            if (distance (a.module.position, b.module.position) <= collisionDistance)
+            if (dx * dx + dy * dy <= collisionDistance * collisionDistance)
             {
                 const auto pair = sortedPair (keyFor (a), keyFor (b));
                 currentCollisions.insert (pair);
 
                 flashProxy (a);
                 flashProxy (b);
-
-                if (! activeCollisions.contains (pair)
-                 && (lastCollisionSoundTimeSeconds < 0.0 || timeSeconds - lastCollisionSoundTimeSeconds > 0.095))
-                {
-                    lastCollisionSoundTimeSeconds = timeSeconds;
-                    triggerCitySound (SonicEventType::collision,
-                                      a.module.sides,
-                                      b.module.sides,
-                                      a.module.foldAt (timeSeconds, globalTempoBpm),
-                                      b.module.foldAt (timeSeconds, globalTempoBpm));
-                }
 
                 const auto flapsA = a.module.flapTriangles (timeSeconds, globalTempoBpm);
                 const auto flapsB = b.module.flapTriangles (timeSeconds, globalTempoBpm);
@@ -2039,6 +1854,53 @@ void CityComponent::updateCollisions (double timeSeconds)
                 const auto tipContactZTolerance = juce::jlimit (24.0f,
                                                                  64.0f,
                                                                  (a.module.flapDepth + b.module.flapDepth) * 0.42f);
+                auto anyTipSurfaceContact = false;
+                auto audibleTipContact = false;
+
+                auto handleTipContact = [&] (const CollisionProxy& source,
+                                             size_t tipIndex,
+                                             Vec3 tip,
+                                             const CollisionProxy& targetProxy,
+                                             Vec3 target,
+                                             std::pair<int, int> tipPair)
+                {
+                    anyTipSurfaceContact = true;
+
+                    const auto inserted = currentTipContacts.insert (tipPair);
+
+                    if (! inserted.second)
+                        return;
+
+                    auto& random = juce::Random::getSystemRandom();
+                    const auto probabilityHit = source.module.shouldPlayTip (static_cast<int> (tipIndex), random);
+                    const auto tipPitch = source.module.randomPitchForTip (static_cast<int> (tipIndex), random);
+                    const auto muted = tipPitch <= 0.0f || ! probabilityHit;
+                    const auto alreadyActive = activeTipContacts.contains (tipPair);
+
+                    addTipContactCue (source.module, tip, targetProxy.module, target, muted, alreadyActive);
+
+                    if (alreadyActive || muted)
+                        return;
+
+                    audibleTipContact = true;
+
+                    if (auto* module = city.findModule (source.module.id))
+                    {
+                        module->soundingPitch = tipPitch;
+                        module->soundingPitchFlash = 1.0f;
+                        module->flash = juce::jmax (module->flash, 1.0f);
+                    }
+
+                    if (auto* module = city.findModule (targetProxy.module.id))
+                        module->flash = juce::jmax (module->flash, 0.72f);
+
+                    triggerCitySound (SonicEventType::tipTrigger,
+                                      source.module.sides,
+                                      targetProxy.module.sides,
+                                      source.module.foldAt (timeSeconds, globalTempoBpm),
+                                      targetProxy.module.foldAt (timeSeconds, globalTempoBpm),
+                                      tipPitch);
+                };
 
                 for (size_t tipA = 0; tipA < flapsA.size(); ++tipA)
                 {
@@ -2049,13 +1911,7 @@ void CityComponent::updateCollisions (double timeSeconds)
                         continue;
 
                     const auto tipPair = sortedPair (tipKey (a, tipA), bodyKey (b));
-                    const auto inserted = currentTipContacts.insert (tipPair);
-
-                    if (! inserted.second)
-                        continue;
-
-                    const auto muted = a.module.pitchForTip (static_cast<int> (tipA)) <= 0.0f;
-                    addTipContactCue (a.module, apexA, b.module, target, muted, true);
+                    handleTipContact (a, tipA, apexA, b, target, tipPair);
                 }
 
                 for (size_t tipB = 0; tipB < flapsB.size(); ++tipB)
@@ -2067,13 +1923,20 @@ void CityComponent::updateCollisions (double timeSeconds)
                         continue;
 
                     const auto tipPair = sortedPair (tipKey (b, tipB), bodyKey (a));
-                    const auto inserted = currentTipContacts.insert (tipPair);
+                    handleTipContact (b, tipB, apexB, a, target, tipPair);
+                }
 
-                    if (! inserted.second)
-                        continue;
-
-                    const auto muted = b.module.pitchForTip (static_cast<int> (tipB)) <= 0.0f;
-                    addTipContactCue (b.module, apexB, a.module, target, muted, true);
+                if (! anyTipSurfaceContact
+                 && ! audibleTipContact
+                 && ! activeCollisions.contains (pair)
+                 && (lastCollisionSoundTimeSeconds < 0.0 || timeSeconds - lastCollisionSoundTimeSeconds > 0.095))
+                {
+                    lastCollisionSoundTimeSeconds = timeSeconds;
+                    triggerCitySound (SonicEventType::collision,
+                                      a.module.sides,
+                                      b.module.sides,
+                                      a.module.foldAt (timeSeconds, globalTempoBpm),
+                                      b.module.foldAt (timeSeconds, globalTempoBpm));
                 }
             }
         }
@@ -2115,6 +1978,18 @@ void CityComponent::updateCollisions (double timeSeconds)
 
 void CityComponent::updatePowerSwitches (double timeSeconds)
 {
+    if (! soundTriggersArmed.load (std::memory_order_acquire))
+    {
+        activePowerSwitchTouches.clear();
+        return;
+    }
+
+    if (city.powerSwitches().empty())
+    {
+        activePowerSwitchTouches.clear();
+        return;
+    }
+
     struct SwitchProxy
     {
         int key = 0;
@@ -2154,7 +2029,13 @@ void CityComponent::updatePowerSwitches (double timeSeconds)
                 if (std::abs (apex.z - powerSwitch.elevation) > 96.0f)
                     continue;
 
-                if (distance (apexPosition, powerSwitch.position) > powerSwitch.triggerRadius)
+                const auto dx = apexPosition.x - powerSwitch.position.x;
+                const auto dy = apexPosition.y - powerSwitch.position.y;
+
+                if (std::abs (dx) > powerSwitch.triggerRadius || std::abs (dy) > powerSwitch.triggerRadius)
+                    continue;
+
+                if (squaredDistance (apexPosition, powerSwitch.position) > powerSwitch.triggerRadius * powerSwitch.triggerRadius)
                     continue;
 
                 powerSwitch.flash = juce::jmax (powerSwitch.flash, 0.78f);
@@ -2165,12 +2046,14 @@ void CityComponent::updatePowerSwitches (double timeSeconds)
                 if (! insertResult.second)
                     continue;
 
-                const auto tipPitch = proxy.module.pitchForTip (static_cast<int> (flapIndex));
-                addTipTriggerCue (proxy.module, apex, powerSwitch, tipPitch <= 0.0f, true);
+                auto& random = juce::Random::getSystemRandom();
+                const auto tipPitch = proxy.module.randomPitchForTip (static_cast<int> (flapIndex), random);
+                const auto probabilityHit = proxy.module.shouldPlayTip (static_cast<int> (flapIndex), random);
+                addTipTriggerCue (proxy.module, apex, powerSwitch, tipPitch <= 0.0f || ! probabilityHit, true);
 
-                if (timeSeconds >= powerSwitchArmedTimeSeconds && ! activePowerSwitchTouches.contains (touch))
+                if (! activePowerSwitchTouches.contains (touch))
                 {
-                    if (tipPitch <= 0.0f)
+                    if (tipPitch <= 0.0f || ! probabilityHit)
                     {
                         addTipTriggerCue (proxy.module, apex, powerSwitch, true);
                         continue;
@@ -2219,6 +2102,13 @@ void CityComponent::updatePowerSwitches (double timeSeconds)
 
                     if (triggered)
                     {
+                        if (auto* module = city.findModule (proxy.module.id))
+                        {
+                            module->soundingPitch = tipPitch;
+                            module->soundingPitchFlash = 1.0f;
+                            module->flash = juce::jmax (module->flash, 1.0f);
+                        }
+
                         addTipTriggerCue (proxy.module, apex, powerSwitch);
                         triggerCitySound (SonicEventType::tipTrigger,
                                           proxy.module.sides,
@@ -2231,7 +2121,8 @@ void CityComponent::updatePowerSwitches (double timeSeconds)
                     announcePowerChange (powerSwitch,
                                           proxy.module.sides,
                                           proxy.module.foldAt (timeSeconds, globalTempoBpm),
-                                          timeSeconds);
+                                          timeSeconds,
+                                          tipPitch);
                 }
             }
         }
@@ -2240,30 +2131,7 @@ void CityComponent::updatePowerSwitches (double timeSeconds)
     activePowerSwitchTouches = std::move (currentTouches);
 }
 
-void CityComponent::setDemoSwitchState (int switchId, bool powered)
-{
-    if (auto* powerSwitch = city.findPowerSwitch (switchId))
-    {
-        if (powerSwitch->powered != powered)
-        {
-            powerSwitch->powered = powered;
-            powerSwitch->flash = 1.0f;
-            announcePowerChange (*powerSwitch,
-                                  powered ? 8 : 3,
-                                  powered ? 0.9f : 0.2f,
-                                  currentTimeSeconds());
-            triggerCitySound (SonicEventType::sectionChange,
-                              powered ? 8 : 3,
-                              powered ? 6 : 4,
-                              powered ? 1.0f : 0.0f,
-                              powered ? 0.85f : 0.15f);
-        }
-
-        powerSwitch->restoreAtSeconds = -1.0;
-    }
-}
-
-void CityComponent::announcePowerChange (PowerSwitch& powerSwitch, int sourceSides, float sourceFold, double timeSeconds)
+void CityComponent::announcePowerChange (PowerSwitch& powerSwitch, int sourceSides, float sourceFold, double timeSeconds, float pitchOverride)
 {
     juce::ignoreUnused (timeSeconds);
 
@@ -2275,13 +2143,15 @@ void CityComponent::announcePowerChange (PowerSwitch& powerSwitch, int sourceSid
                       sourceSides,
                       powerSwitch.powered ? 8 : 3,
                       sourceFold,
-                      powerSwitch.powered ? 1.0f : 0.0f);
+                      powerSwitch.powered ? 1.0f : 0.0f,
+                      pitchOverride);
 
     triggerCitySound (SonicEventType::cablePulse,
                       sourceSides,
                       powerSwitch.powered ? 7 : 4,
                       sourceFold,
-                      powerSwitch.powered ? 0.84f : 0.22f);
+                      powerSwitch.powered ? 0.84f : 0.22f,
+                      pitchOverride);
 }
 
 void CityComponent::flashConnectedTargets (int switchId, float amount)
@@ -2382,49 +2252,239 @@ void CityComponent::addTipContactCue (const FoldingModule& a, Vec3 tipA, const F
     }
 }
 
-void CityComponent::updateDemoSectionAutomation (double timeSeconds)
+void CityComponent::paintSoundingNotes (juce::Graphics& g, const IsoProjector& view)
 {
-    if (demoVerseSwitchId < 0 || demoChorusSwitchId < 0 || demoBridgeSwitchId < 0)
-        return;
-
-    const auto cycle = std::fmod (timeSeconds, 72.0);
-    auto sectionIndex = 0;
-
-    if (cycle < 16.0)
-        sectionIndex = 0; // verse
-    else if (cycle < 32.0)
-        sectionIndex = 1; // chorus
-    else if (cycle < 48.0)
-        sectionIndex = 2; // verse reprise
-    else if (cycle < 64.0)
-        sectionIndex = 3; // chorus reprise
-    else
-        sectionIndex = 4; // bridge
-
-    const auto verseOn = sectionIndex == 0 || sectionIndex == 2;
-    const auto chorusOn = sectionIndex == 1 || sectionIndex == 3;
-    const auto bridgeOn = sectionIndex == 4;
-
-    for (auto& powerSwitch : city.powerSwitches())
+    for (const auto& module : city.modules())
     {
-        if (powerSwitch.id == demoVerseSwitchId
-         || powerSwitch.id == demoChorusSwitchId
-         || powerSwitch.id == demoBridgeSwitchId)
+        if (module.soundingPitch <= 0.0f || module.soundingPitchFlash <= 0.01f)
             continue;
 
-        powerSwitch.powered = false;
-        powerSwitch.restoreAtSeconds = -1.0;
+        const auto centre = view.project ({ module.position.x, module.position.y, module.elevation + 12.0f });
+        const auto alpha = juce::jlimit (0.0f, 1.0f, module.soundingPitchFlash);
+        const auto label = noteNameForMidi (module.soundingPitch);
+        const auto selected = selectedKind == CityObjectKind::module && selectedId == module.id;
+        const auto bounds = juce::Rectangle<float> (centre.x - 24.0f, centre.y - 12.0f, 48.0f, 24.0f);
+        const auto base = selected ? juce::Colour (0xffffd766) : juce::Colour (0xff35e7ff);
+
+        g.setColour (juce::Colours::black.withAlpha (0.22f * alpha));
+        g.fillRoundedRectangle (bounds.translated (0.0f, 2.0f), 7.0f);
+        g.setColour (juce::Colour (0xee071411).withAlpha (0.72f * alpha));
+        g.fillRoundedRectangle (bounds, 7.0f);
+        g.setColour (base.withAlpha (0.74f * alpha));
+        g.drawRoundedRectangle (bounds.reduced (0.75f), 7.0f, selected ? 1.8f : 1.2f);
+        g.setFont (juce::FontOptions (14.0f, juce::Font::bold));
+        g.setColour (juce::Colours::white.withAlpha (0.96f * alpha));
+        g.drawText (label, bounds, juce::Justification::centred);
+    }
+}
+
+void CityComponent::paintActivationRings (juce::Graphics& g, const IsoProjector& view)
+{
+    for (const auto& module : city.modules())
+    {
+        const auto powered = city.isPowered (CityObjectKind::module, module.id, module.position);
+        const auto selected = selectedKind == CityObjectKind::module && selectedId == module.id;
+        const auto reach = polygonTipReach (module.sides, module.radius, module.flapDepth);
+        const auto z = module.elevation + 3.0f;
+        const auto centre = view.project ({ module.position.x, module.position.y, z });
+        const auto screenRadius = reach * view.zoom * (view.viewMode == CityViewMode::topDown ? 1.0f : 1.15f) + 64.0f;
+
+        if (centre.x < -screenRadius
+         || centre.y < -screenRadius
+         || centre.x > static_cast<float> (getWidth()) + screenRadius
+         || centre.y > static_cast<float> (getHeight()) + screenRadius)
+            continue;
+
+        const auto segments = juce::jlimit (24, 72, juce::roundToInt (reach * view.zoom * 0.62f));
+        const auto colour = selected ? juce::Colour (0xffffd766)
+                          : powered ? juce::Colour (0xff32c9b1)
+                                    : juce::Colour (0xff8b948f);
+
+        juce::Path ring;
+
+        for (int i = 0; i <= segments; ++i)
+        {
+            const auto angle = juce::MathConstants<float>::twoPi * static_cast<float> (i) / static_cast<float> (segments);
+            const auto point = view.project ({ module.position.x + std::cos (angle) * reach,
+                                               module.position.y + std::sin (angle) * reach,
+                                               z });
+
+            if (i == 0)
+                ring.startNewSubPath (point);
+            else
+                ring.lineTo (point);
+        }
+
+        const auto alpha = powered ? 0.42f : 0.18f;
+        g.setColour (colour.withAlpha (alpha * 0.18f));
+        g.strokePath (ring, juce::PathStrokeType (selected ? 8.0f : 6.0f));
+        g.setColour (colour.withAlpha (alpha));
+        g.strokePath (ring, juce::PathStrokeType (selected ? 2.4f : 1.8f));
+
+        const auto label = juce::String (juce::roundToInt (reach));
+        g.setColour (juce::Colour (0xeef8fbf1).withAlpha (selected ? 0.86f : 0.66f));
+        g.fillRoundedRectangle ({ centre.x + 8.0f, centre.y - 18.0f, 54.0f, 18.0f }, 5.0f);
+        g.setColour (colour.withAlpha (selected ? 0.96f : 0.72f));
+        g.setFont (juce::FontOptions (11.0f, juce::Font::bold));
+        g.drawText (label, juce::Rectangle<float> { centre.x + 8.0f, centre.y - 18.0f, 54.0f, 18.0f }, juce::Justification::centred);
+    }
+}
+
+void CityComponent::paintTriggerTelemetry (juce::Graphics& g, const IsoProjector& view)
+{
+    struct TelemetryRow
+    {
+        Vec3 tip;
+        Vec3 target;
+        int moduleId = -1;
+        int tipIndex = -1;
+        int switchId = -1;
+        float xyDistance = 0.0f;
+        float zDistance = 0.0f;
+        float triggerRadius = 0.0f;
+        float margin = 0.0f;
+        float fold = 0.0f;
+        float pitch = 0.0f;
+        bool contacting = false;
+        bool muted = false;
+        bool powered = false;
+    };
+
+    std::vector<TelemetryRow> rows;
+    rows.reserve (city.modules().size() * city.powerSwitches().size());
+
+    const auto timeSeconds = currentTimeSeconds();
+
+    for (const auto& module : city.modules())
+    {
+        if (! city.isPowered (CityObjectKind::module, module.id, module.position))
+            continue;
+
+        const auto flaps = module.flapTriangles (timeSeconds, globalTempoBpm);
+        const auto fold = module.foldAt (timeSeconds, globalTempoBpm);
+
+        for (size_t tip = 0; tip < flaps.size(); ++tip)
+        {
+            const auto apex = flaps[tip][2];
+            const auto apex2 = Vec2 { apex.x, apex.y };
+
+            for (const auto& powerSwitch : city.powerSwitches())
+            {
+                const auto xy = distance (apex2, powerSwitch.position);
+                const auto z = std::abs (apex.z - powerSwitch.elevation);
+                const auto margin = xy - powerSwitch.triggerRadius;
+
+                if (margin > 220.0f && rows.size() > 24)
+                    continue;
+
+                rows.push_back ({ apex,
+                                  { powerSwitch.position.x, powerSwitch.position.y, powerSwitch.elevation + 16.0f },
+                                  module.id,
+                                  static_cast<int> (tip),
+                                  powerSwitch.id,
+                                  xy,
+                                  z,
+                                  powerSwitch.triggerRadius,
+                                  margin,
+                                  fold,
+                                  module.pitchForTip (static_cast<int> (tip)),
+                                  xy <= powerSwitch.triggerRadius && z <= 96.0f,
+                                  module.tipIsMuted (static_cast<int> (tip)),
+                                  city.isSwitchEnergized (powerSwitch) });
+            }
+        }
     }
 
-    setDemoSwitchState (demoVerseSwitchId, verseOn);
-    setDemoSwitchState (demoChorusSwitchId, chorusOn);
-    setDemoSwitchState (demoBridgeSwitchId, bridgeOn);
-
-    if (sectionIndex != demoLastSectionIndex)
+    std::stable_sort (rows.begin(), rows.end(), [] (const TelemetryRow& a, const TelemetryRow& b)
     {
-        activeCollisions.clear();
-        activePowerSwitchTouches.clear();
-        demoLastSectionIndex = sectionIndex;
+        if (a.contacting != b.contacting)
+            return a.contacting;
+
+        return std::abs (a.margin) < std::abs (b.margin);
+    });
+
+    if (rows.size() > 12)
+        rows.resize (12);
+
+    for (const auto& row : rows)
+    {
+        const auto tip = view.project (row.tip);
+        const auto target = view.project (row.target);
+        const auto colour = row.contacting ? juce::Colour (0xff32c9b1)
+                          : row.margin < 28.0f ? juce::Colour (0xffffd766)
+                                                : juce::Colour (0xff75d7ff);
+
+        g.setColour (colour.withAlpha (row.contacting ? 0.76f : 0.34f));
+        g.drawLine ({ tip, target }, row.contacting ? 3.0f : 1.5f);
+        g.setColour (colour.withAlpha (row.contacting ? 0.96f : 0.62f));
+        g.drawEllipse (tip.x - 5.0f, tip.y - 5.0f, 10.0f, 10.0f, row.contacting ? 2.0f : 1.2f);
+        g.drawEllipse (target.x - 7.0f, target.y - 7.0f, 14.0f, 14.0f, row.contacting ? 2.0f : 1.2f);
+    }
+
+    const auto panelWidth = 372;
+    const auto rowHeight = 20;
+    const auto panelHeight = 58 + static_cast<int> (rows.size()) * rowHeight;
+    auto panel = juce::Rectangle<int> (getWidth() - panelWidth - 18, 18, panelWidth, panelHeight)
+                    .getIntersection (getLocalBounds().reduced (12));
+
+    if (panel.isEmpty())
+        return;
+
+    g.setColour (juce::Colours::black.withAlpha (0.16f));
+    g.fillRoundedRectangle (panel.toFloat().translated (0.0f, 4.0f), 14.0f);
+    g.setColour (juce::Colour (0xeef8fbf1));
+    g.fillRoundedRectangle (panel.toFloat(), 14.0f);
+    g.setColour (juce::Colour (0x9932c9b1));
+    g.drawRoundedRectangle (panel.toFloat(), 14.0f, 1.2f);
+
+    auto content = panel.reduced (14, 10);
+    g.setColour (juce::Colour (0xff263832));
+    g.setFont (juce::FontOptions (15.0f, juce::Font::bold));
+    g.drawText ("trigger telemetry", content.removeFromTop (20), juce::Justification::centredLeft);
+
+    g.setFont (juce::FontOptions (12.0f));
+    g.setColour (juce::Colour (0xff65766f));
+    g.drawText ("tip -> switch   dist / radius   z   fold   note", content.removeFromTop (20), juce::Justification::centredLeft);
+    content.removeFromTop (2);
+
+    if (rows.empty())
+    {
+        g.setColour (juce::Colour (0xff65766f));
+        g.drawText ("no powered polygon tips near trigger zones", content.removeFromTop (rowHeight), juce::Justification::centredLeft);
+        return;
+    }
+
+    g.setFont (juce::FontOptions (12.0f, juce::Font::bold));
+
+    for (const auto& row : rows)
+    {
+        auto line = content.removeFromTop (rowHeight);
+        const auto statusColour = row.contacting ? juce::Colour (0xff32c9b1)
+                                : row.margin < 0.0f ? juce::Colour (0xffffd766)
+                                                     : juce::Colour (0xff75d7ff);
+        g.setColour (statusColour.withAlpha (0.18f));
+        g.fillRoundedRectangle (line.toFloat().reduced (0.0f, 2.0f), 5.0f);
+
+        g.setColour (statusColour);
+        g.fillEllipse (static_cast<float> (line.getX()) + 2.0f,
+                       static_cast<float> (line.getY()) + 6.0f,
+                       8.0f,
+                       8.0f);
+
+        const auto noteText = row.muted ? juce::String ("X") : juce::String (juce::roundToInt (row.pitch));
+        const auto text = juce::String ("M") + juce::String (row.moduleId)
+                        + "." + juce::String (row.tipIndex + 1)
+                        + " -> S" + juce::String (row.switchId)
+                        + "   " + juce::String (row.xyDistance, 1)
+                        + " / " + juce::String (row.triggerRadius, 1)
+                        + "   z " + juce::String (row.zDistance, 1)
+                        + "   f " + juce::String (row.fold, 2)
+                        + "   " + noteText
+                        + (row.contacting ? "   HIT" : "")
+                        + (row.powered ? "   on" : "   off");
+
+        g.setColour (juce::Colour (0xff263832));
+        g.drawText (text, line.withTrimmedLeft (16), juce::Justification::centredLeft);
     }
 }
 
@@ -2477,7 +2537,35 @@ void CityComponent::configureToolbar()
     toolbar.onTipPitchChanged = [this] (float midiNote)
     {
         grabKeyboardFocus();
-        setSelectedTipPitch (midiNote);
+
+        if (midiNote < 0.0f && selectedTipIndex >= 0)
+            setSelectedTipRandom (selectedTipIndex, true);
+        else
+            setSelectedTipPitch (midiNote);
+    };
+
+    toolbar.onTipPitchValueChanged = [this] (int tipIndex, float midiNote)
+    {
+        grabKeyboardFocus();
+        setSelectedTipPitch (tipIndex, midiNote);
+    };
+
+    toolbar.onTipPitchRandomChanged = [this] (int tipIndex, bool random)
+    {
+        grabKeyboardFocus();
+        setSelectedTipRandom (tipIndex, random);
+    };
+
+    toolbar.onTipPitchRangeChanged = [this] (int tipIndex, float low, float high)
+    {
+        grabKeyboardFocus();
+        setSelectedTipRandomRange (tipIndex, low, high);
+    };
+
+    toolbar.onTipProbabilityChanged = [this] (int tipIndex, float probability)
+    {
+        grabKeyboardFocus();
+        setSelectedTipProbability (tipIndex, probability);
     };
 
     toolbar.onRateDivisionChanged = [this] (float rateDivision)
@@ -2591,6 +2679,12 @@ void CityComponent::syncToolbar()
     auto blockSize = defaultBlockSize;
     auto tipSelected = false;
     auto tipPitch = 60.0f;
+    auto polygonSelected = false;
+    std::array<float, 8> tipPitches {};
+    std::array<bool, 8> tipRandom {};
+    std::array<float, 8> tipRandomLow {};
+    std::array<float, 8> tipRandomHigh {};
+    std::array<float, 8> tipProbabilities {};
     auto tempoBpm = globalTempoBpm;
     auto playing = transportPlaying;
     auto switchSelected = false;
@@ -2624,6 +2718,12 @@ void CityComponent::syncToolbar()
                 phaseDegrees = juce::radiansToDegrees (selected->phase);
                 rotationDegrees = juce::radiansToDegrees (selected->rotation);
                 showRotationControl = true;
+                polygonSelected = true;
+                tipPitches = selected->tipPitches;
+                tipRandom = selected->tipPitchRandom;
+                tipRandomLow = selected->tipPitchRandomLow;
+                tipRandomHigh = selected->tipPitchRandomHigh;
+                tipProbabilities = selected->tipProbabilities;
                 if (selectedTipIndex >= 0 && selectedTipIndex < selected->sides)
                 {
                     tipSelected = true;
@@ -2696,12 +2796,19 @@ void CityComponent::syncToolbar()
                        blockSize,
                        tipSelected,
                        tipPitch,
+                       polygonSelected,
+                       tipPitches,
+                       tipRandom,
+                       tipRandomLow,
+                       tipRandomHigh,
+                       tipProbabilities,
                        tempoBpm,
                        playing,
                        switchSelected,
                        switchActivationMode,
                        switchOffDuration,
-                       switchRetriggerPolicy);
+                       switchRetriggerPolicy,
+                       colourWireframeMode);
 }
 
 CityRenderState CityComponent::createRenderState() const
@@ -2731,6 +2838,7 @@ CityRenderState CityComponent::createRenderState() const
     state.pan = projector.pan;
     state.zoom = projector.zoom;
     state.viewMode = projector.viewMode;
+    state.colourWireframeMode = colourWireframeMode;
     state.width = renderWidth;
     state.height = renderHeight;
     state.selectedModuleId = selectedKind == CityObjectKind::module ? selectedId : -1;
@@ -2844,7 +2952,7 @@ void CityComponent::setSelectedOrDefaultRateDivision (float rateDivision)
         }
         else if (selectedKind == CityObjectKind::module)
         {
-            const auto clampedRate = juce::jlimit (1.0f, FoldingModule::maxRateDivision, rateDivision);
+            const auto clampedRate = juce::jlimit (FoldingModule::minRateDivision, FoldingModule::maxRateDivision, rateDivision);
             defaultRateDivision = clampedRate;
 
             if (auto* selected = city.findModule (selectedId))
@@ -2859,7 +2967,7 @@ void CityComponent::setSelectedOrDefaultRateDivision (float rateDivision)
         }
         else
         {
-            const auto clampedRate = juce::jlimit (1.0f, FoldingModule::maxRateDivision, rateDivision);
+            const auto clampedRate = juce::jlimit (FoldingModule::minRateDivision, FoldingModule::maxRateDivision, rateDivision);
             defaultRateDivision = clampedRate;
         }
 
@@ -2949,16 +3057,105 @@ void CityComponent::setSelectedRotationDegrees (float rotationDegrees)
 
 void CityComponent::setSelectedTipPitch (float midiNote)
 {
+    setSelectedTipPitch (selectedTipIndex, midiNote);
+}
+
+void CityComponent::setSelectedTipPitch (int tipIndex, float midiNote)
+{
     recordUndoState();
 
     {
         const juce::ScopedLock lock (modelLock);
 
-        if (selectedKind == CityObjectKind::module && selectedTipIndex >= 0)
+        if (selectedKind == CityObjectKind::module && tipIndex >= 0)
         {
             if (auto* selected = city.findModule (selectedId))
-                selected->tipPitches[static_cast<size_t> (juce::jlimit (0, 7, selectedTipIndex))] = midiNote <= 0.0f ? 0.0f
-                                                                                                                      : juce::jlimit (36.0f, 96.0f, midiNote);
+            {
+                const auto index = static_cast<size_t> (juce::jlimit (0, 7, tipIndex));
+                selected->tipPitches[index] = midiNote <= 0.0f ? 0.0f : juce::jlimit (36.0f, 96.0f, midiNote);
+                selected->tipPitchRandom[index] = false;
+
+                if (! selected->tipPitchRandom[index])
+                {
+                    selected->tipPitchRandomLow[index] = selected->tipPitches[index];
+                    selected->tipPitchRandomHigh[index] = selected->tipPitches[index];
+                }
+            }
+        }
+    }
+
+    syncToolbar();
+    repaint();
+}
+
+void CityComponent::setSelectedTipRandom (int tipIndex, bool random)
+{
+    recordUndoState();
+
+    {
+        const juce::ScopedLock lock (modelLock);
+
+        if (selectedKind == CityObjectKind::module && tipIndex >= 0)
+        {
+            if (auto* selected = city.findModule (selectedId))
+            {
+                const auto index = static_cast<size_t> (juce::jlimit (0, 7, tipIndex));
+                selected->tipPitchRandom[index] = random;
+
+                const auto rangeIsCollapsed = std::abs (selected->tipPitchRandomHigh[index] - selected->tipPitchRandomLow[index]) < 0.5f;
+
+                if (random
+                 && (selected->tipPitchRandomHigh[index] <= 0.0f || rangeIsCollapsed)
+                 && selected->tipPitches[index] > 0.0f)
+                {
+                    selected->tipPitchRandomLow[index] = selected->tipPitches[index];
+                    selected->tipPitchRandomHigh[index] = juce::jmin (96.0f, selected->tipPitches[index] + 7.0f);
+                }
+            }
+        }
+    }
+
+    syncToolbar();
+    repaint();
+}
+
+void CityComponent::setSelectedTipRandomRange (int tipIndex, float low, float high)
+{
+    recordUndoState();
+
+    {
+        const juce::ScopedLock lock (modelLock);
+
+        if (selectedKind == CityObjectKind::module && tipIndex >= 0)
+        {
+            if (auto* selected = city.findModule (selectedId))
+            {
+                const auto index = static_cast<size_t> (juce::jlimit (0, 7, tipIndex));
+                selected->tipPitchRandomLow[index] = juce::jlimit (0.0f, 96.0f, juce::jmin (low, high));
+                selected->tipPitchRandomHigh[index] = juce::jlimit (0.0f, 96.0f, juce::jmax (low, high));
+                selected->tipPitchRandom[index] = true;
+            }
+        }
+    }
+
+    syncToolbar();
+    repaint();
+}
+
+void CityComponent::setSelectedTipProbability (int tipIndex, float probability)
+{
+    recordUndoState();
+
+    {
+        const juce::ScopedLock lock (modelLock);
+
+        if (selectedKind == CityObjectKind::module && tipIndex >= 0)
+        {
+            if (auto* selected = city.findModule (selectedId))
+            {
+                const auto index = static_cast<size_t> (juce::jlimit (0, 7, tipIndex));
+                selected->tipProbabilities[index] = juce::jlimit (0.0f, 1.0f, probability);
+            }
         }
     }
 
@@ -3179,7 +3376,6 @@ void CityComponent::stopTransport()
         const juce::ScopedLock lock (modelLock);
         transportPlaying = false;
         transportTimeSeconds = 0.0;
-        powerSwitchArmedTimeSeconds = 0.45;
         activeCollisions.clear();
         activePowerSwitchTouches.clear();
         activeTipContacts.clear();
@@ -3225,12 +3421,26 @@ void CityComponent::setZoom (float zoom)
 
 void CityComponent::toggleViewMode()
 {
+    setViewMode (projector.viewMode == CityViewMode::isometric ? CityViewMode::topDown
+                                                               : CityViewMode::isometric);
+}
+
+CityViewMode CityComponent::currentViewMode() const
+{
+    const juce::ScopedLock lock (modelLock);
+    return projector.viewMode;
+}
+
+void CityComponent::setViewMode (CityViewMode mode)
+{
     {
         const juce::ScopedLock lock (modelLock);
+        if (projector.viewMode == mode)
+            return;
+
         projector.centre = getLocalBounds().toFloat().getCentre();
         const auto centreBefore = projector.unprojectToGround (projector.centre);
-        projector.viewMode = projector.viewMode == CityViewMode::isometric ? CityViewMode::topDown
-                                                                           : CityViewMode::isometric;
+        projector.viewMode = mode;
         const auto projectedAfter = projector.project ({ centreBefore.x, centreBefore.y, 0.0f });
         projector.pan += projector.centre - projectedAfter;
     }
@@ -3238,6 +3448,87 @@ void CityComponent::toggleViewMode()
     syncToolbar();
     openGLContext.triggerRepaint();
     repaint();
+}
+
+bool CityComponent::isTriggerTelemetryVisible() const noexcept
+{
+    return triggerTelemetryVisible;
+}
+
+void CityComponent::setTriggerTelemetryVisible (bool shouldBeVisible)
+{
+    if (triggerTelemetryVisible == shouldBeVisible)
+        return;
+
+    triggerTelemetryVisible = shouldBeVisible;
+    repaint();
+}
+
+bool CityComponent::areActivationRingsVisible() const noexcept
+{
+    return activationRingsVisible;
+}
+
+void CityComponent::setActivationRingsVisible (bool shouldBeVisible)
+{
+    if (activationRingsVisible == shouldBeVisible)
+        return;
+
+    activationRingsVisible = shouldBeVisible;
+    repaint();
+}
+
+bool CityComponent::areSoundingNotesVisible() const noexcept
+{
+    return soundingNotesVisible;
+}
+
+void CityComponent::setSoundingNotesVisible (bool shouldBeVisible)
+{
+    if (soundingNotesVisible == shouldBeVisible)
+        return;
+
+    soundingNotesVisible = shouldBeVisible;
+    repaint();
+}
+
+bool CityComponent::isColourWireframeModeEnabled() const noexcept
+{
+    return colourWireframeMode;
+}
+
+void CityComponent::setColourWireframeModeEnabled (bool shouldBeEnabled)
+{
+    if (colourWireframeMode == shouldBeEnabled)
+        return;
+
+    colourWireframeMode = shouldBeEnabled;
+    syncToolbar();
+    openGLContext.triggerRepaint();
+    repaint();
+}
+
+bool CityComponent::isUiVisible() const noexcept
+{
+    return uiVisible;
+}
+
+void CityComponent::setUiVisible (bool shouldBeVisible)
+{
+    if (uiVisible == shouldBeVisible)
+        return;
+
+    uiVisible = shouldBeVisible;
+    toolbar.setVisible (uiVisible);
+    resized();
+    grabKeyboardFocus();
+    repaint();
+}
+
+void CityComponent::armSoundTriggers() noexcept
+{
+    soundTriggersArmed.store (true, std::memory_order_release);
+    soundTriggerResetRequested.store (true, std::memory_order_release);
 }
 
 void CityComponent::handleCableClick (CityHit hit, bool createPowerSource)
@@ -3400,6 +3691,8 @@ juce::var CityComponent::createState() const
     root->setProperty ("panX", projector.pan.x);
     root->setProperty ("panY", projector.pan.y);
     root->setProperty ("viewMode", static_cast<int> (projector.viewMode));
+    root->setProperty ("colourWireframeMode", colourWireframeMode);
+    root->setProperty ("uiVisible", uiVisible);
 
     juce::Array<juce::var> modules;
     for (const auto& module : city.modules())
@@ -3421,6 +3714,21 @@ juce::var CityComponent::createState() const
         for (const auto pitch : module.tipPitches)
             tipPitches.add (pitch);
         item->setProperty ("tipPitches", tipPitches);
+        juce::Array<juce::var> tipPitchRandom;
+        juce::Array<juce::var> tipPitchRandomLow;
+        juce::Array<juce::var> tipPitchRandomHigh;
+        juce::Array<juce::var> tipProbabilities;
+        for (size_t i = 0; i < module.tipPitches.size(); ++i)
+        {
+            tipPitchRandom.add (module.tipPitchRandom[i]);
+            tipPitchRandomLow.add (module.tipPitchRandomLow[i]);
+            tipPitchRandomHigh.add (module.tipPitchRandomHigh[i]);
+            tipProbabilities.add (module.tipProbabilities[i]);
+        }
+        item->setProperty ("tipPitchRandom", tipPitchRandom);
+        item->setProperty ("tipPitchRandomLow", tipPitchRandomLow);
+        item->setProperty ("tipPitchRandomHigh", tipPitchRandomHigh);
+        item->setProperty ("tipProbabilities", tipProbabilities);
         item->setProperty ("powered", module.powered);
         modules.add (juce::var (item.get()));
     }
@@ -3548,6 +3856,8 @@ bool CityComponent::loadState (const juce::var& state)
         projector.viewMode = intProperty (*root, "viewMode", 0) == static_cast<int> (CityViewMode::topDown)
                                  ? CityViewMode::topDown
                                  : CityViewMode::isometric;
+        colourWireframeMode = boolProperty (*root, "colourWireframeMode", colourWireframeMode);
+        uiVisible = boolProperty (*root, "uiVisible", uiVisible);
 
         if (const auto* blocks = root->getProperty ("blocks").getArray())
         {
@@ -3582,7 +3892,7 @@ bool CityComponent::loadState (const juce::var& state)
                     module.radius = juce::jlimit (24.0f, 1300.0f, floatProperty (*object, "radius", module.radius));
                     module.flapDepth = juce::jlimit (8.0f, 110.0f, floatProperty (*object, "flapDepth", module.flapDepth));
                     module.elevation = floatProperty (*object, "elevation", city.elevationAt (module.position));
-                    module.rateDivision = juce::jlimit (1.0f, FoldingModule::maxRateDivision, floatProperty (*object, "rateDivision", module.rateDivision));
+                    module.rateDivision = juce::jlimit (FoldingModule::minRateDivision, FoldingModule::maxRateDivision, floatProperty (*object, "rateDivision", module.rateDivision));
                     module.phase = wrapRadians (floatProperty (*object, "phase", module.phase));
                     module.rotation = wrapRadians (floatProperty (*object, "rotation", module.rotation));
                     module.attachedPlatterId = intProperty (*object, "attachedPlatterId", module.attachedPlatterId);
@@ -3594,6 +3904,30 @@ bool CityComponent::loadState (const juce::var& state)
                         const auto count = juce::jmin (static_cast<int> (module.tipPitches.size()), tipPitches->size());
                         for (int i = 0; i < count; ++i)
                             module.tipPitches[static_cast<size_t> (i)] = static_cast<float> ((double) tipPitches->getReference (i));
+                    }
+                    if (const auto* randomValues = object->getProperty ("tipPitchRandom").getArray())
+                    {
+                        const auto count = juce::jmin (static_cast<int> (module.tipPitchRandom.size()), randomValues->size());
+                        for (int i = 0; i < count; ++i)
+                            module.tipPitchRandom[static_cast<size_t> (i)] = static_cast<bool> ((bool) randomValues->getReference (i));
+                    }
+                    if (const auto* lows = object->getProperty ("tipPitchRandomLow").getArray())
+                    {
+                        const auto count = juce::jmin (static_cast<int> (module.tipPitchRandomLow.size()), lows->size());
+                        for (int i = 0; i < count; ++i)
+                            module.tipPitchRandomLow[static_cast<size_t> (i)] = juce::jlimit (0.0f, 96.0f, static_cast<float> ((double) lows->getReference (i)));
+                    }
+                    if (const auto* highs = object->getProperty ("tipPitchRandomHigh").getArray())
+                    {
+                        const auto count = juce::jmin (static_cast<int> (module.tipPitchRandomHigh.size()), highs->size());
+                        for (int i = 0; i < count; ++i)
+                            module.tipPitchRandomHigh[static_cast<size_t> (i)] = juce::jlimit (0.0f, 96.0f, static_cast<float> ((double) highs->getReference (i)));
+                    }
+                    if (const auto* probabilities = object->getProperty ("tipProbabilities").getArray())
+                    {
+                        const auto count = juce::jmin (static_cast<int> (module.tipProbabilities.size()), probabilities->size());
+                        for (int i = 0; i < count; ++i)
+                            module.tipProbabilities[static_cast<size_t> (i)] = juce::jlimit (0.0f, 1.0f, static_cast<float> ((double) probabilities->getReference (i)));
                     }
                     module.powered = boolProperty (*object, "powered", module.powered);
                     city.modules().push_back (module);
@@ -3729,11 +4063,6 @@ bool CityComponent::loadState (const juce::var& state)
         activeTipContacts.clear();
         tipContactReleaseTimes.clear();
         tipTriggerCues.clear();
-        demoVerseSwitchId = -1;
-        demoChorusSwitchId = -1;
-        demoBridgeSwitchId = -1;
-        demoLastSectionIndex = -1;
-        powerSwitchArmedTimeSeconds = currentTimeSeconds() + 0.6;
     }
 
     syncToolbar();
@@ -3849,6 +4178,21 @@ bool CityComponent::copySelectionToClipboard() const
         for (const auto pitch : module->tipPitches)
             tipPitches.add (pitch);
         item->setProperty ("tipPitches", tipPitches);
+        juce::Array<juce::var> tipPitchRandom;
+        juce::Array<juce::var> tipPitchRandomLow;
+        juce::Array<juce::var> tipPitchRandomHigh;
+        juce::Array<juce::var> tipProbabilities;
+        for (size_t i = 0; i < module->tipPitches.size(); ++i)
+        {
+            tipPitchRandom.add (module->tipPitchRandom[i]);
+            tipPitchRandomLow.add (module->tipPitchRandomLow[i]);
+            tipPitchRandomHigh.add (module->tipPitchRandomHigh[i]);
+            tipProbabilities.add (module->tipProbabilities[i]);
+        }
+        item->setProperty ("tipPitchRandom", tipPitchRandom);
+        item->setProperty ("tipPitchRandomLow", tipPitchRandomLow);
+        item->setProperty ("tipPitchRandomHigh", tipPitchRandomHigh);
+        item->setProperty ("tipProbabilities", tipProbabilities);
     }
     else if (selectedKind == CityObjectKind::platter)
     {
@@ -3965,6 +4309,30 @@ bool CityComponent::pasteSelectionFromClipboard()
                 for (int i = 0; i < count; ++i)
                     module.tipPitches[static_cast<size_t> (i)] = static_cast<float> ((double) tipPitches->getReference (i));
             }
+            if (const auto* randomValues = item->getProperty ("tipPitchRandom").getArray())
+            {
+                const auto count = juce::jmin (static_cast<int> (module.tipPitchRandom.size()), randomValues->size());
+                for (int i = 0; i < count; ++i)
+                    module.tipPitchRandom[static_cast<size_t> (i)] = static_cast<bool> ((bool) randomValues->getReference (i));
+            }
+            if (const auto* lows = item->getProperty ("tipPitchRandomLow").getArray())
+            {
+                const auto count = juce::jmin (static_cast<int> (module.tipPitchRandomLow.size()), lows->size());
+                for (int i = 0; i < count; ++i)
+                    module.tipPitchRandomLow[static_cast<size_t> (i)] = juce::jlimit (0.0f, 96.0f, static_cast<float> ((double) lows->getReference (i)));
+            }
+            if (const auto* highs = item->getProperty ("tipPitchRandomHigh").getArray())
+            {
+                const auto count = juce::jmin (static_cast<int> (module.tipPitchRandomHigh.size()), highs->size());
+                for (int i = 0; i < count; ++i)
+                    module.tipPitchRandomHigh[static_cast<size_t> (i)] = juce::jlimit (0.0f, 96.0f, static_cast<float> ((double) highs->getReference (i)));
+            }
+            if (const auto* probabilities = item->getProperty ("tipProbabilities").getArray())
+            {
+                const auto count = juce::jmin (static_cast<int> (module.tipProbabilities.size()), probabilities->size());
+                for (int i = 0; i < count; ++i)
+                    module.tipProbabilities[static_cast<size_t> (i)] = juce::jlimit (0.0f, 1.0f, static_cast<float> ((double) probabilities->getReference (i)));
+            }
 
             selectedId = module.id;
             buildMode = CityToolbar::BuildMode::select;
@@ -4058,10 +4426,6 @@ void CityComponent::startNewCity()
         activeTipContacts.clear();
         tipContactReleaseTimes.clear();
         tipTriggerCues.clear();
-        demoVerseSwitchId = -1;
-        demoChorusSwitchId = -1;
-        demoBridgeSwitchId = -1;
-        demoLastSectionIndex = -1;
     }
 
     syncToolbar();
@@ -4085,10 +4449,6 @@ void CityComponent::clearModules()
         activeTipContacts.clear();
         tipContactReleaseTimes.clear();
         tipTriggerCues.clear();
-        demoVerseSwitchId = -1;
-        demoChorusSwitchId = -1;
-        demoBridgeSwitchId = -1;
-        demoLastSectionIndex = -1;
     }
 
     syncToolbar();
@@ -4226,7 +4586,7 @@ bool CityComponent::hitSelectedResizeHandle (juce::Point<float> screenPoint) con
             return false;
 
         centre = selected->position;
-        radius = selected->radius + selected->flapDepth;
+        radius = polygonTipReach (selected->sides, selected->radius, selected->flapDepth);
         elevation = selected->elevation;
     }
     else if (selectedKind == CityObjectKind::platter)
@@ -4265,7 +4625,7 @@ bool CityComponent::hitSelectedPhaseHandle (juce::Point<float> screenPoint) cons
             return false;
 
         centre = selected->position;
-        radius = selected->radius + selected->flapDepth;
+        radius = polygonTipReach (selected->sides, selected->radius, selected->flapDepth);
         elevation = selected->elevation;
         phase = selected->phase;
     }
@@ -4306,7 +4666,9 @@ void CityComponent::dragSelectedResizeHandle (juce::Point<float> screenPoint)
                 return;
 
             const auto world = projector.unprojectToElevation (screenPoint, selected->elevation);
-            newRadius = distance (world, selected->position) - selected->flapDepth;
+            newRadius = polygonRadiusForTipReach (selected->sides,
+                                                  distance (world, selected->position),
+                                                  selected->flapDepth);
         }
         else if (selectedKind == CityObjectKind::platter)
         {

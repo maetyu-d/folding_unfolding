@@ -32,7 +32,14 @@ private:
         undoMenuItem,
         redoMenuItem,
         copyMenuItem,
-        pasteMenuItem
+        pasteMenuItem,
+        isometricViewMenuItem,
+        topDownViewMenuItem,
+        colourWireframeMenuItem,
+        uiVisibleMenuItem,
+        triggerTelemetryMenuItem,
+        activationRingsMenuItem,
+        soundingNotesMenuItem
     };
 
     void startNewCity();

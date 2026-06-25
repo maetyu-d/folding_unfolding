@@ -234,7 +234,8 @@ void CityOpenGLRenderer::renderOpenGL()
     const auto height = juce::jmax (1, state.height);
     const auto desktopScale = static_cast<float> (openGLContext.getRenderingScale());
 
-    juce::OpenGLHelpers::clear (juce::Colour (0xfff8fbf5));
+    juce::OpenGLHelpers::clear (state.colourWireframeMode ? juce::Colours::black
+                                                           : juce::Colour (0xfff8fbf5));
 
     if (shader == nullptr)
         initialiseShader();
@@ -270,14 +271,20 @@ void CityOpenGLRenderer::renderOpenGL()
     glBindBuffer (GL_ARRAY_BUFFER, vertexBuffer);
     attributes->enable();
 
-    drawVertices (groundVertices, GL_TRIANGLES);
+    if (! state.colourWireframeMode)
+        drawVertices (groundVertices, GL_TRIANGLES);
+
     drawVertices (powerZoneVertices, GL_TRIANGLES);
     drawVertices (gridVertices, GL_LINES, 1.25f);
-    drawVertices (blockTriangleVertices, GL_TRIANGLES);
-    drawVertices (blockOutlineVertices, GL_LINES, 1.1f);
-    drawVertices (triangleVertices, GL_TRIANGLES);
-    drawVertices (neonVertices, GL_TRIANGLES);
-    drawVertices (outlineVertices, GL_LINES, 2.0f);
+    if (! state.colourWireframeMode)
+    {
+        drawVertices (blockTriangleVertices, GL_TRIANGLES);
+        drawVertices (triangleVertices, GL_TRIANGLES);
+        drawVertices (neonVertices, GL_TRIANGLES);
+    }
+
+    drawVertices (blockOutlineVertices, GL_LINES, state.colourWireframeMode ? 1.45f : 1.1f);
+    drawVertices (outlineVertices, GL_LINES, state.colourWireframeMode ? 1.65f : 2.0f);
 
     attributes->disable();
     glBindBuffer (GL_ARRAY_BUFFER, 0);
@@ -341,47 +348,67 @@ void CityOpenGLRenderer::buildMeshes (const CityRenderState& state)
     neonVertices.clear();
     blockOutlineVertices.clear();
     outlineVertices.clear();
+    colourWireframeMode = state.colourWireframeMode;
 
     const auto moduleLikeCount = state.modules.size();
+    const auto cueCount = state.tipTriggerCues.size();
     blockFaces.reserve (state.blocks.size() * 10);
-    faces.reserve (moduleLikeCount * 80 + state.powerSources.size() * 24 + state.powerSwitches.size() * 12);
-    neonFaces.reserve (moduleLikeCount * 96 + state.platters.size() * 96 + state.planks.size() * 24 + state.powerCables.size() * 12 + state.powerFeedCables.size() * 12);
+    faces.reserve (moduleLikeCount * 104 + state.powerSources.size() * 24 + state.powerSwitches.size() * 16 + state.blocks.size() * 10);
+    neonFaces.reserve (moduleLikeCount * 168 + state.platters.size() * 156 + state.planks.size() * 48 + cueCount * 132 + state.powerCables.size() * 16 + state.powerFeedCables.size() * 12);
     blockOutlineVertices.reserve (state.blocks.size() * 28);
-    outlineVertices.reserve (moduleLikeCount * 32 + state.powerCables.size() * 6 + state.powerFeedCables.size() * 6);
+    outlineVertices.reserve (moduleLikeCount * 40 + state.platters.size() * 24 + state.planks.size() * 12 + state.powerCables.size() * 6 + state.powerFeedCables.size() * 6);
+
+    IsoProjector visibilityView;
+    visibilityView.zoom = juce::jmax (0.01f, state.zoom);
+    visibilityView.pan = state.pan;
+    visibilityView.viewMode = state.viewMode;
+    visibilityView.centre = { static_cast<float> (state.width) * 0.5f,
+                              static_cast<float> (state.height) * 0.5f };
+
+    const auto visible = [&visibilityView, &state] (Vec2 position, float radius, float elevation) noexcept
+    {
+        const auto screen = visibilityView.project ({ position.x, position.y, elevation });
+        const auto screenRadius = (radius * 1.9f + std::abs (elevation) * 0.42f) * visibilityView.zoom + 180.0f;
+
+        return screen.x >= -screenRadius
+            && screen.y >= -screenRadius
+            && screen.x <= static_cast<float> (state.width) + screenRadius
+            && screen.y <= static_cast<float> (state.height) + screenRadius;
+    };
 
     addGround (state);
 
     for (const auto& powerSwitch : state.powerSwitches)
-        if (visibleInView (powerSwitch.position, powerSwitch.areaRadius, powerSwitch.elevation, state))
+        if (! colourWireframeMode && visible (powerSwitch.position, powerSwitch.areaRadius, powerSwitch.elevation))
             addPowerZone (powerSwitch);
 
     addGrid (state);
 
     for (const auto& block : state.blocks)
-        if (visibleInView (block.position, block.hitRadius(), block.topElevation(), state))
+        if (visible (block.position, block.hitRadius(), block.topElevation()))
             addBlock (block, state);
 
     addPowerFeeds (state);
     addPowerCables (state);
 
     for (const auto& source : state.powerSources)
-        if (visibleInView (source.position, source.radius * 1.8f, source.elevation + 60.0f, state))
+        if (visible (source.position, source.radius * 1.8f, source.elevation + 60.0f))
             addPowerSource (source, state);
 
     for (const auto& powerSwitch : state.powerSwitches)
-        if (visibleInView (powerSwitch.position, powerSwitch.triggerRadius * 2.0f, powerSwitch.elevation + 40.0f, state))
+        if (visible (powerSwitch.position, powerSwitch.triggerRadius * 2.0f, powerSwitch.elevation + 40.0f))
             addPowerSwitch (powerSwitch, state);
 
     for (const auto& platter : state.platters)
-        if (visibleInView (platter.position, platter.hitRadius(), platter.elevation + 28.0f, state))
+        if (visible (platter.position, platter.hitRadius(), platter.elevation + 28.0f))
             addPlatter (platter, state);
 
     for (const auto& plank : state.planks)
-        if (visibleInView (plank.position, plank.hitRadius(), plank.elevation + 24.0f, state))
+        if (visible (plank.position, plank.hitRadius(), plank.elevation + 24.0f))
             addPlank (plank, state);
 
     for (const auto& module : state.modules)
-        if (visibleInView (module.position, module.radius + module.flapDepth, module.elevation + module.flapDepth, state))
+        if (visible (module.position, module.radius + module.flapDepth, module.elevation + module.flapDepth))
             addModule (module, state);
 
     addTipTriggerCues (state);
@@ -397,10 +424,15 @@ void CityOpenGLRenderer::buildMeshes (const CityRenderState& state)
 
     auto flattenFaces = [] (const std::vector<Face>& faceList, std::vector<Vertex>& vertices)
     {
-        vertices.reserve (faceList.size() * 3);
+        vertices.resize (faceList.size() * 3);
+        auto* out = vertices.data();
 
         for (const auto& face : faceList)
-            vertices.insert (vertices.end(), face.vertices.begin(), face.vertices.end());
+        {
+            *out++ = face.vertices[0];
+            *out++ = face.vertices[1];
+            *out++ = face.vertices[2];
+        }
     };
 
     sortFaces (blockFaces);
@@ -430,6 +462,9 @@ void CityOpenGLRenderer::drawVertices (const std::vector<Vertex>& vertices,
 
 void CityOpenGLRenderer::addGround (const CityRenderState& state)
 {
+    if (state.colourWireframeMode)
+        return;
+
     IsoProjector view;
     view.zoom = juce::jmax (0.01f, state.zoom);
     view.pan = state.pan;
@@ -502,8 +537,10 @@ void CityOpenGLRenderer::addGrid (const CityRenderState& state)
     const auto maxX = std::ceil ((centreWorld.x + halfSpan) / gridStep) * gridStep;
     const auto minY = std::floor ((centreWorld.y - halfSpan) / gridStep) * gridStep;
     const auto maxY = std::ceil ((centreWorld.y + halfSpan) / gridStep) * gridStep;
-    const auto minorColour = juce::Colour (0xff6f837a).withAlpha (0.22f);
-    const auto majorColour = juce::Colour (0xff35a996).withAlpha (0.34f);
+    const auto minorColour = state.colourWireframeMode ? juce::Colour (0xff1dd7ff).withAlpha (0.12f)
+                                                       : juce::Colour (0xff6f837a).withAlpha (0.22f);
+    const auto majorColour = state.colourWireframeMode ? juce::Colour (0xff32f0b2).withAlpha (0.22f)
+                                                       : juce::Colour (0xff35a996).withAlpha (0.34f);
     const auto normal = Vec3 { 0.0f, 0.0f, 1.0f };
 
     for (auto x = minX; x <= maxX; x += gridStep)
@@ -530,8 +567,12 @@ void CityOpenGLRenderer::addModule (const FoldingModule& module, const CityRende
     const auto footprint = snappedFootprint ((module.radius + module.flapDepth) * 2.0f);
 
     addGridLot (module.position, footprint, module.elevation, colourForSides (module.sides), selected, module.powered);
-    addShadow (module, timeSeconds, state.globalTempoBpm);
+
+    if (! colourWireframeMode)
+        addShadow (module, timeSeconds, state.globalTempoBpm);
+
     addModuleOutlines (module, timeSeconds, state.globalTempoBpm, selected);
+    addModuleTriggerLight (module, selected);
 }
 
 void CityOpenGLRenderer::addBlock (const StackBlock& block, const CityRenderState& state)
@@ -574,6 +615,26 @@ void CityOpenGLRenderer::addBlock (const StackBlock& block, const CityRenderStat
     const auto t2 = Vec3 { x1, y1, top };
     const auto t3 = Vec3 { x0, y1, top };
 
+    if (colourWireframeMode)
+    {
+        for (const auto& edge : { std::pair { t0, t1 }, std::pair { t1, t2 }, std::pair { t2, t3 }, std::pair { t3, t0 },
+                                  std::pair { b0, b1 }, std::pair { b1, b2 }, std::pair { b2, b3 }, std::pair { b3, b0 },
+                                  std::pair { b0, t0 }, std::pair { b1, t1 }, std::pair { b2, t2 }, std::pair { b3, t3 } })
+            addLine (edge.first, edge.second, outline, selectedAmount, block.flash * 0.32f);
+
+        for (int level = 1; level < block.levels; ++level)
+        {
+            const auto z = static_cast<float> (level) * block.levelHeight;
+            const auto levelColour = outline.withAlpha (block.powered ? 0.32f : 0.16f);
+            addLine ({ x0, y0, z }, { x1, y0, z }, levelColour, selectedAmount, block.flash * 0.2f);
+            addLine ({ x1, y0, z }, { x1, y1, z }, levelColour, selectedAmount, block.flash * 0.2f);
+            addLine ({ x1, y1, z }, { x0, y1, z }, levelColour, selectedAmount, block.flash * 0.2f);
+            addLine ({ x0, y1, z }, { x0, y0, z }, levelColour, selectedAmount, block.flash * 0.2f);
+        }
+
+        return;
+    }
+
     addFace (t0, t1, t2, topColour, selectedAmount, block.flash, { 0.0f, 0.0f, 1.0f });
     addFace (t0, t2, t3, topColour.darker (0.04f), selectedAmount, block.flash, { 0.0f, 0.0f, 1.0f });
 
@@ -614,6 +675,35 @@ void CityOpenGLRenderer::addPowerSwitch (const PowerSwitch& powerSwitch, const C
                                       powerSwitch.powered ? 0.82f : 0.48f);
     const auto centre = Vec3 { powerSwitch.position.x, powerSwitch.position.y, topZ };
     const auto normal = Vec3 { 0.0f, 0.0f, 1.0f };
+
+    if (colourWireframeMode)
+    {
+        addWireCircle (powerSwitch.position,
+                       powerSwitch.triggerRadius,
+                       baseZ + 2.0f,
+                       rimColour.withAlpha (powerSwitch.powered ? 0.74f : 0.34f),
+                       selectedAmount,
+                       powerSwitch.flash,
+                       28);
+        addWireCircle (powerSwitch.position,
+                       radius,
+                       topZ,
+                       colour.withAlpha (0.92f),
+                       selectedAmount,
+                       powerSwitch.flash,
+                       segments);
+        addLine ({ powerSwitch.position.x - radius, powerSwitch.position.y, topZ },
+                 { powerSwitch.position.x + radius, powerSwitch.position.y, topZ },
+                 colour.withAlpha (0.84f),
+                 selectedAmount,
+                 powerSwitch.flash);
+        addLine ({ powerSwitch.position.x, powerSwitch.position.y - radius, topZ },
+                 { powerSwitch.position.x, powerSwitch.position.y + radius, topZ },
+                 colour.withAlpha (0.84f),
+                 selectedAmount,
+                 powerSwitch.flash);
+        return;
+    }
 
     for (int i = 0; i < segments; ++i)
     {
@@ -715,6 +805,41 @@ void CityOpenGLRenderer::addPowerSource (const PowerSource& source, const CityRe
     const auto normal = Vec3 { 0.0f, 0.0f, 1.0f };
     const auto top = Vec3 { source.position.x, source.position.y, topZ };
     const auto bottom = Vec3 { source.position.x, source.position.y, baseZ };
+
+    if (colourWireframeMode)
+    {
+        addWireCircle (source.position,
+                       radius,
+                       baseZ,
+                       topColour.withAlpha (source.powered ? 0.82f : 0.32f),
+                       selectedAmount,
+                       source.flash,
+                       segments);
+        addWireCircle (source.position,
+                       radius * 0.72f,
+                       topZ - 8.0f,
+                       topColour.withAlpha (source.powered ? 0.92f : 0.38f),
+                       selectedAmount,
+                       source.flash,
+                       segments);
+        addLine ({ source.position.x, source.position.y, baseZ },
+                 top,
+                 topColour.withAlpha (0.90f),
+                 selectedAmount,
+                 source.flash);
+        addLine ({ source.position.x - radius * 0.55f, source.position.y, topZ + 8.0f },
+                 { source.position.x + radius * 0.55f, source.position.y, topZ + 8.0f },
+                 topColour,
+                 selectedAmount,
+                 source.flash);
+        addLine ({ source.position.x, source.position.y - radius * 0.55f, topZ + 8.0f },
+                 { source.position.x, source.position.y + radius * 0.55f, topZ + 8.0f },
+                 topColour,
+                 selectedAmount,
+                 source.flash);
+        juce::ignoreUnused (bottom, normal, sideA, sideB);
+        return;
+    }
 
     for (int i = 0; i < segments; ++i)
     {
@@ -911,29 +1036,57 @@ void CityOpenGLRenderer::addGridLot (Vec2 centre, float footprint, float elevati
     const auto d = Vec3 { centre.x - half, centre.y + half, z };
     const auto normal = Vec3 { 0.0f, 0.0f, 1.0f };
 
-    addFace (a, b, c, fill, selectedAmount, 0.0f, normal);
-    addFace (a, c, d, fill, selectedAmount, 0.0f, normal);
+    if (! colourWireframeMode)
+    {
+        addFace (a, b, c, fill, selectedAmount, 0.0f, normal);
+        addFace (a, c, d, fill, selectedAmount, 0.0f, normal);
+    }
+
     addLine (a, b, outline, selectedAmount, 0.0f);
     addLine (b, c, outline, selectedAmount, 0.0f);
     addLine (c, d, outline, selectedAmount, 0.0f);
     addLine (d, a, outline, selectedAmount, 0.0f);
 }
 
+void CityOpenGLRenderer::addWireCircle (Vec2 centre,
+                                        float radius,
+                                        float elevation,
+                                        juce::Colour colour,
+                                        float selected,
+                                        float flash,
+                                        int segments)
+{
+    const auto clampedSegments = juce::jlimit (6, 64, segments);
+
+    for (int i = 0; i < clampedSegments; ++i)
+    {
+        const auto a = juce::MathConstants<float>::twoPi * static_cast<float> (i) / static_cast<float> (clampedSegments);
+        const auto b = juce::MathConstants<float>::twoPi * static_cast<float> (i + 1) / static_cast<float> (clampedSegments);
+        addLine ({ centre.x + std::cos (a) * radius, centre.y + std::sin (a) * radius, elevation },
+                 { centre.x + std::cos (b) * radius, centre.y + std::sin (b) * radius, elevation },
+                 colour,
+                 selected,
+                 flash);
+    }
+}
+
 void CityOpenGLRenderer::addTipTriggerCues (const CityRenderState& state)
 {
     for (const auto& cue : state.tipTriggerCues)
     {
-        const auto lifeSeconds = cue.contactOnly ? (cue.tipTip ? 0.48f : 0.34f) : (cue.tipTip ? 0.96f : 0.82f);
+        const auto lifeSeconds = cue.contactOnly ? (cue.tipTip ? 0.20f : 0.16f)
+                                                 : (cue.tipTip ? 0.26f : 0.18f);
         const auto t = juce::jlimit (0.0f, 1.0f, cue.age / lifeSeconds);
-        const auto alpha = (1.0f - smoothStep01 (t));
+        const auto alpha = std::pow (1.0f - smoothStep01 (t), 2.05f);
         const auto baseColour = cue.tipTip ? rainbowAt (cue.muted ? 0.74f : 0.54f, cue.muted ? 0.48f : 0.92f)
                                            : colourForSides (cue.sides);
         const auto colour = (cue.muted ? juce::Colour (0xffd8dde7) : baseColour).withAlpha ((cue.muted ? 0.72f : 0.96f) * alpha);
         const auto hotBase = cue.tipTip ? juce::Colour (0xffffffff)
-                                        : rainbowAt (cue.contactOnly ? 0.42f : 0.15f);
+                                        : (cue.contactOnly ? juce::Colour (0xffffffff)
+                                                           : juce::Colour (0xffff4fd2));
         const auto hot = (cue.muted ? juce::Colour (0xff9aa3b5) : hotBase).withAlpha ((cue.muted ? 0.68f : 0.98f) * alpha);
-        const auto lift = (cue.contactOnly ? (cue.tipTip ? 10.0f : 4.0f) : 10.0f)
-                        + (cue.contactOnly ? (cue.tipTip ? 18.0f : 8.0f) : (cue.tipTip ? 44.0f : 34.0f)) * (1.0f - t);
+        const auto lift = (cue.contactOnly ? (cue.tipTip ? 5.0f : 2.0f) : 3.0f)
+                        + (cue.contactOnly ? (cue.tipTip ? 6.0f : 2.0f) : (cue.tipTip ? 8.0f : 5.0f)) * (1.0f - t);
         const auto tip = Vec3 { cue.tip.x, cue.tip.y, cue.tip.z + lift };
         const auto targetLift = cue.tipTip ? lift : lift * 0.35f;
         const auto target = Vec3 { cue.target.x, cue.target.y, cue.target.z + targetLift };
@@ -943,21 +1096,14 @@ void CityOpenGLRenderer::addTipTriggerCues (const CityRenderState& state)
 
         auto addThickSegment = [this] (Vec3 a, Vec3 b, juce::Colour segmentColour, float thickness, float flash)
         {
-            addTube (a, b, segmentColour, 1.0f, flash, thickness, neonFaces);
-        };
-
-        auto addThickRing = [&addThickSegment] (Vec3 centre, float radius, juce::Colour ringColour, float thickness, float flash, int segments)
-        {
-            for (int i = 0; i < segments; ++i)
+            if (colourWireframeMode)
             {
-                const auto a = juce::MathConstants<float>::twoPi * static_cast<float> (i) / static_cast<float> (segments);
-                const auto b = juce::MathConstants<float>::twoPi * static_cast<float> (i + 1) / static_cast<float> (segments);
-                addThickSegment ({ centre.x + std::cos (a) * radius, centre.y + std::sin (a) * radius, centre.z },
-                                 { centre.x + std::cos (b) * radius, centre.y + std::sin (b) * radius, centre.z },
-                                 ringColour,
-                                 thickness,
-                                 flash);
+                addLine (a, b, segmentColour.withAlpha (juce::jlimit (0.18f, 0.98f, segmentColour.getFloatAlpha())), 1.0f, flash);
+                juce::ignoreUnused (thickness);
+                return;
             }
+
+            addTube (a, b, segmentColour, 1.0f, flash, thickness, neonFaces);
         };
 
         auto addDiamond = [&addThickSegment] (Vec3 centre, float size, juce::Colour diamondColour, float thickness, float flash)
@@ -973,9 +1119,33 @@ void CityOpenGLRenderer::addTipTriggerCues (const CityRenderState& state)
             addThickSegment (west, north, diamondColour, thickness, flash);
         };
 
+        auto addBracket = [&addThickSegment] (Vec3 centre,
+                                              float nx,
+                                              float ny,
+                                              float px,
+                                              float py,
+                                              float size,
+                                              juce::Colour bracketColour,
+                                              float thickness,
+                                              float flash)
+        {
+            const auto half = size * 0.5f;
+            const auto arm = size * 0.34f;
+            addThickSegment ({ centre.x + px * half - nx * arm, centre.y + py * half - ny * arm, centre.z },
+                             { centre.x + px * half + nx * arm, centre.y + py * half + ny * arm, centre.z },
+                             bracketColour,
+                             thickness,
+                             flash);
+            addThickSegment ({ centre.x - px * half - nx * arm, centre.y - py * half - ny * arm, centre.z },
+                             { centre.x - px * half + nx * arm, centre.y - py * half + ny * arm, centre.z },
+                             bracketColour,
+                             thickness,
+                             flash);
+        };
+
         if (cue.contactOnly)
         {
-            const auto tube = cue.tipTip ? 6.0f : 5.5f;
+            const auto tube = cue.tipTip ? 4.5f : 3.6f;
 
             if (cue.tipTip)
             {
@@ -1036,9 +1206,25 @@ void CityOpenGLRenderer::addTipTriggerCues (const CityRenderState& state)
                 continue;
             }
 
-            const auto contactRadius = 24.0f + 16.0f * alpha;
-            addThickRing (tip, contactRadius, hot.withAlpha (0.98f * alpha), 5.0f, alpha, 18);
-            addThickRing (target, contactRadius * 0.72f, hot.withAlpha (0.62f * alpha), 4.0f, alpha, 18);
+            const auto dx = target.x - tip.x;
+            const auto dy = target.y - tip.y;
+            const auto len = std::sqrt (dx * dx + dy * dy);
+            const auto nx = len > 0.001f ? dx / len : 1.0f;
+            const auto ny = len > 0.001f ? dy / len : 0.0f;
+            const auto px = -ny;
+            const auto py = nx;
+            const auto start = Vec3 { tip.x + dx * 0.12f, tip.y + dy * 0.12f, tip.z + (target.z - tip.z) * 0.12f };
+            const auto endT = 0.72f + 0.24f * (1.0f - t);
+            const auto end = Vec3 { tip.x + dx * endT, tip.y + dy * endT, tip.z + (target.z - tip.z) * endT };
+
+            addThickSegment (start, end, colour.withAlpha (0.76f * alpha), tube, alpha);
+            addThickSegment ({ start.x + px * 5.0f, start.y + py * 5.0f, start.z },
+                             { end.x + px * 5.0f, end.y + py * 5.0f, end.z },
+                             hot.withAlpha (0.7f * alpha),
+                             1.8f,
+                             alpha);
+            addDiamond (tip, 9.0f, hot.withAlpha (0.9f * alpha), 2.4f, alpha);
+            addBracket (target, nx, ny, px, py, 22.0f, colour.withAlpha (0.88f * alpha), 2.6f, alpha);
 
             continue;
         }
@@ -1051,42 +1237,61 @@ void CityOpenGLRenderer::addTipTriggerCues (const CityRenderState& state)
 
         if (! cue.muted)
         {
-            addThickSegment (tip, mid, colour.withAlpha (0.98f * alpha), 8.5f, alpha);
-            addThickSegment (mid, target, hot.withAlpha (0.98f * alpha), 8.5f, alpha);
+            const auto dx = target.x - tip.x;
+            const auto dy = target.y - tip.y;
+            const auto dz = target.z - tip.z;
+            const auto len = std::sqrt (dx * dx + dy * dy);
+            const auto nx = len > 0.001f ? dx / len : 1.0f;
+            const auto ny = len > 0.001f ? dy / len : 0.0f;
+            const auto px = -ny;
+            const auto py = nx;
+            const auto start = Vec3 { tip.x + dx * 0.08f, tip.y + dy * 0.08f, tip.z + dz * 0.08f };
+            const auto endT = juce::jmin (1.0f, 0.52f + t * 0.86f);
+            const auto traceEnd = Vec3 { tip.x + dx * endT, tip.y + dy * endT, tip.z + dz * endT };
+            addThickSegment ({ start.x - px * 4.5f, start.y - py * 4.5f, start.z },
+                             { traceEnd.x - px * 4.5f, traceEnd.y - py * 4.5f, traceEnd.z },
+                             colour.withAlpha (0.92f * alpha),
+                             4.2f,
+                             alpha);
+            addThickSegment ({ start.x + px * 4.5f, start.y + py * 4.5f, start.z },
+                             { traceEnd.x + px * 4.5f, traceEnd.y + py * 4.5f, traceEnd.z },
+                             hot.withAlpha (0.84f * alpha),
+                             1.8f,
+                             alpha);
+            addBracket (target, nx, ny, px, py, 24.0f, hot.withAlpha (0.94f * alpha), 3.0f, alpha);
+            addDiamond (target, 7.0f, colour.withAlpha (0.9f * alpha), 2.0f, alpha);
         }
 
-        const auto burstRadius = (cue.muted ? 34.0f : 42.0f) + (cue.muted ? 42.0f : 72.0f) * t;
-        addThickRing (tip, burstRadius, colour.withAlpha (0.92f * alpha), cue.muted ? 7.0f : 9.0f, alpha, 22);
+        const auto markSize = cue.muted ? 10.0f : 12.0f;
+        addDiamond (tip, markSize, colour.withAlpha (0.92f * alpha), cue.muted ? 2.8f : 3.6f, alpha);
 
-        for (int i = 0; i < 8; ++i)
+        for (int i = 0; i < 4; ++i)
         {
-            const auto a = juce::MathConstants<float>::twoPi * static_cast<float> (i) / 8.0f;
-            const auto inner = burstRadius * 0.35f;
+            const auto a = juce::MathConstants<float>::twoPi * static_cast<float> (i) / 4.0f;
+            const auto inner = markSize * 0.55f;
+            const auto outer = markSize * (1.15f + 0.25f * alpha);
             addThickSegment ({ tip.x + std::cos (a) * inner, tip.y + std::sin (a) * inner, tip.z },
-                             { tip.x + std::cos (a) * burstRadius, tip.y + std::sin (a) * burstRadius, tip.z },
+                             { tip.x + std::cos (a) * outer, tip.y + std::sin (a) * outer, tip.z },
                              colour.withAlpha (0.72f * alpha),
-                             cue.muted ? 4.5f : 6.0f,
+                             cue.muted ? 2.2f : 2.8f,
                              alpha);
         }
 
         if (cue.muted)
         {
-            const auto xRadius = 38.0f + 36.0f * t;
+            const auto xRadius = 12.0f + 4.0f * alpha;
             addThickSegment ({ tip.x - xRadius, tip.y - xRadius, tip.z },
                              { tip.x + xRadius, tip.y + xRadius, tip.z },
                              hot.withAlpha (0.96f * alpha),
-                             8.0f,
+                             3.2f,
                              alpha);
             addThickSegment ({ tip.x + xRadius, tip.y - xRadius, tip.z },
                              { tip.x - xRadius, tip.y + xRadius, tip.z },
                              hot.withAlpha (0.96f * alpha),
-                             8.0f,
+                             3.2f,
                              alpha);
             continue;
         }
-
-        const auto targetRadius = 38.0f + 32.0f * alpha;
-        addThickRing (target, targetRadius, hot.withAlpha (0.98f * alpha), 7.5f, alpha, 24);
     }
 }
 
@@ -1273,6 +1478,13 @@ void CityOpenGLRenderer::addPlank (const Plank& plank, const CityRenderState& st
                             .withAlpha (plank.powered ? 0.86f : 0.28f);
     const auto flash = plank.powered ? plank.flash : 0.0f;
 
+    if (colourWireframeMode)
+    {
+        addLine (start, end, colour, selectedAmount, flash);
+        addWireCircle (socket, plank.socketRadius(), plank.elevation + 4.0f, accent, selectedAmount, flash, 14);
+        return;
+    }
+
     addTube (start, end, colour, selectedAmount, flash, 5.5f + selectedAmount * 1.5f, neonFaces);
 
     const auto socketRadius = plank.socketRadius();
@@ -1393,6 +1605,86 @@ void CityOpenGLRenderer::addModuleOutlines (const FoldingModule& module,
     }
 }
 
+void CityOpenGLRenderer::addModuleTriggerLight (const FoldingModule& module, bool selected)
+{
+    constexpr auto segments = 18;
+    const auto selectedAmount = selected ? 1.0f : 0.0f;
+    const auto noteFlash = module.powered ? module.soundingPitchFlash : 0.0f;
+    const auto flash = module.powered ? juce::jmax (module.flash, noteFlash) : 0.0f;
+    const auto z = module.elevation + 7.0f + flash * 9.0f;
+    const auto radius = juce::jlimit (7.0f, 24.0f, module.radius * 0.12f);
+    const auto litRadius = radius * (1.0f + flash * 0.55f + selectedAmount * 0.18f);
+    const auto centre = Vec3 { module.position.x, module.position.y, z };
+    const auto normal = Vec3 { 0.0f, 0.0f, 1.0f };
+    const auto pitchHue = module.soundingPitch > 0.0f
+        ? std::fmod ((module.soundingPitch - 36.0f) / 48.0f + 1.0f, 1.0f)
+        : 0.0f;
+    const auto base = noteFlash > 0.02f && module.soundingPitch > 0.0f
+        ? rainbowAt (pitchHue, 0.98f)
+        : colourForSides (module.sides);
+    const auto fill = (module.powered ? base.interpolatedWith (juce::Colours::white, 0.38f + flash * 0.36f)
+                                      : juce::Colour (0xff8b948f))
+                          .withAlpha (module.powered ? 0.34f + flash * 0.58f : 0.14f);
+    const auto rim = (flash > 0.02f ? juce::Colour (0xffffffff) : base)
+                         .withAlpha (module.powered ? 0.62f + flash * 0.34f : 0.24f);
+
+    if (colourWireframeMode)
+    {
+        addWireCircle (module.position, litRadius, z, rim, selectedAmount, flash, segments);
+
+        if (flash > 0.02f)
+            addWireCircle (module.position,
+                           litRadius * (1.45f + flash * 0.45f),
+                           z + 2.0f,
+                           base.interpolatedWith (juce::Colours::white, 0.42f).withAlpha (0.42f + flash * 0.28f),
+                           selectedAmount,
+                           flash,
+                           segments);
+
+        juce::ignoreUnused (centre, normal, fill);
+        return;
+    }
+
+    for (int i = 0; i < segments; ++i)
+    {
+        const auto a = juce::MathConstants<float>::twoPi * static_cast<float> (i) / static_cast<float> (segments);
+        const auto b = juce::MathConstants<float>::twoPi * static_cast<float> (i + 1) / static_cast<float> (segments);
+        const auto rimA = Vec3 { module.position.x + std::cos (a) * litRadius,
+                                 module.position.y + std::sin (a) * litRadius,
+                                 z };
+        const auto rimB = Vec3 { module.position.x + std::cos (b) * litRadius,
+                                 module.position.y + std::sin (b) * litRadius,
+                                 z };
+
+        addFace (centre, rimA, rimB, fill, selectedAmount, flash, normal);
+        addTube (rimA, rimB, rim, selectedAmount, flash, 1.9f + flash * 2.6f, neonFaces);
+    }
+
+    if (flash > 0.02f)
+    {
+        const auto haloRadius = litRadius * (1.55f + flash * 0.6f);
+        const auto haloColour = base.interpolatedWith (juce::Colours::white, 0.42f)
+                                    .withAlpha (0.18f + flash * 0.38f);
+
+        for (int i = 0; i < segments; ++i)
+        {
+            const auto a = juce::MathConstants<float>::twoPi * static_cast<float> (i) / static_cast<float> (segments);
+            const auto b = juce::MathConstants<float>::twoPi * static_cast<float> (i + 1) / static_cast<float> (segments);
+            addTube ({ module.position.x + std::cos (a) * haloRadius,
+                       module.position.y + std::sin (a) * haloRadius,
+                       z + 2.0f },
+                     { module.position.x + std::cos (b) * haloRadius,
+                       module.position.y + std::sin (b) * haloRadius,
+                       z + 2.0f },
+                     haloColour,
+                     selectedAmount,
+                     flash,
+                     2.4f + flash * 2.0f,
+                     neonFaces);
+        }
+    }
+}
+
 void CityOpenGLRenderer::addFace (Vec3 a,
                                   Vec3 b,
                                   Vec3 c,
@@ -1421,6 +1713,18 @@ void CityOpenGLRenderer::addLine (Vec3 a, Vec3 b, juce::Colour colour, float sel
 
 void CityOpenGLRenderer::addNeonLine (Vec3 a, Vec3 b, juce::Colour colour, float selected, float flash)
 {
+    if (colourWireframeMode)
+    {
+        addLine (a,
+                 b,
+                 colour.withSaturation (juce::jmax (0.82f, colour.getSaturation()))
+                       .withBrightness (1.0f)
+                       .withAlpha (juce::jlimit (0.52f, 1.0f, colour.getFloatAlpha() * 1.4f)),
+                 selected,
+                 juce::jmax (flash * 0.5f, selected * 0.18f));
+        return;
+    }
+
     if (collectingBlockGeometry)
     {
         addLine (a, b, colour, selected, flash);
