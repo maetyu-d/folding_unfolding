@@ -352,9 +352,12 @@ void CityOpenGLRenderer::buildMeshes (const CityRenderState& state)
 
     const auto moduleLikeCount = state.modules.size();
     const auto cueCount = state.tipTriggerCues.size();
-    blockFaces.reserve (state.blocks.size() * 10);
-    faces.reserve (moduleLikeCount * 104 + state.powerSources.size() * 24 + state.powerSwitches.size() * 16 + state.blocks.size() * 10);
-    neonFaces.reserve (moduleLikeCount * 168 + state.platters.size() * 156 + state.planks.size() * 48 + cueCount * 132 + state.powerCables.size() * 16 + state.powerFeedCables.size() * 12);
+    if (! colourWireframeMode)
+    {
+        blockFaces.reserve (state.blocks.size() * 10);
+        faces.reserve (moduleLikeCount * 104 + state.powerSources.size() * 24 + state.powerSwitches.size() * 16 + state.blocks.size() * 10);
+        neonFaces.reserve (moduleLikeCount * 168 + state.platters.size() * 156 + state.planks.size() * 48 + cueCount * 132 + state.powerCables.size() * 16 + state.powerFeedCables.size() * 12);
+    }
     blockOutlineVertices.reserve (state.blocks.size() * 28);
     outlineVertices.reserve (moduleLikeCount * 40 + state.platters.size() * 24 + state.planks.size() * 12 + state.powerCables.size() * 6 + state.powerFeedCables.size() * 6);
 
@@ -435,12 +438,15 @@ void CityOpenGLRenderer::buildMeshes (const CityRenderState& state)
         }
     };
 
-    sortFaces (blockFaces);
-    sortFaces (faces);
-    sortFaces (neonFaces);
-    flattenFaces (blockFaces, blockTriangleVertices);
-    flattenFaces (faces, triangleVertices);
-    flattenFaces (neonFaces, neonVertices);
+    if (! colourWireframeMode)
+    {
+        sortFaces (blockFaces);
+        sortFaces (faces);
+        sortFaces (neonFaces);
+        flattenFaces (blockFaces, blockTriangleVertices);
+        flattenFaces (faces, triangleVertices);
+        flattenFaces (neonFaces, neonVertices);
+    }
 }
 
 void CityOpenGLRenderer::drawVertices (const std::vector<Vertex>& vertices,

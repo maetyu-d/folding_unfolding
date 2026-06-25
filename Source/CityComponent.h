@@ -55,6 +55,8 @@ public:
     void setColourWireframeModeEnabled (bool shouldBeEnabled);
     bool isUiVisible() const noexcept;
     void setUiVisible (bool shouldBeVisible);
+    bool isMinimapVisible() const noexcept;
+    void setMinimapVisible (bool shouldBeVisible);
     void armSoundTriggers() noexcept;
 
     std::function<void (SonicEventType type, int sidesA, int sidesB, float foldA, float foldB, float pitchOverride)> onCitySound;
@@ -86,6 +88,7 @@ private:
     void paintSoundingNotes (juce::Graphics& g, const IsoProjector& view);
     void paintActivationRings (juce::Graphics& g, const IsoProjector& view);
     void paintTriggerTelemetry (juce::Graphics& g, const IsoProjector& view);
+    void paintMinimap (juce::Graphics& g, const IsoProjector& view);
     void triggerCitySound (SonicEventType type, int sidesA, int sidesB, float foldA, float foldB, float pitchOverride = -1.0f);
     void configureToolbar();
     void syncToolbar();
@@ -197,6 +200,7 @@ private:
     bool soundingNotesVisible = true;
     bool colourWireframeMode = false;
     bool uiVisible = true;
+    bool minimapVisible = true;
     double lastCollisionSoundTimeSeconds = -1.0;
     std::atomic<bool> soundTriggersArmed { false };
     std::atomic<bool> soundTriggerResetRequested { true };

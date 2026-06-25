@@ -78,6 +78,11 @@ juce::PopupMenu MainComponent::getMenuForIndex (int menuIndex, const juce::Strin
                       tickedText ("Show UI", uiVisible),
                       true,
                       uiVisible);
+        const auto minimapVisible = cityComponent.isMinimapVisible();
+        menu.addItem (minimapVisibleMenuItem,
+                      tickedText ("Show Minimap", minimapVisible),
+                      true,
+                      minimapVisible);
         menu.addSeparator();
         const auto activationRingsVisible = cityComponent.areActivationRingsVisible();
         menu.addItem (activationRingsMenuItem,
@@ -119,6 +124,9 @@ void MainComponent::menuItemSelected (int menuItemID, int topLevelMenuIndex)
             break;
         case uiVisibleMenuItem:
             cityComponent.setUiVisible (! cityComponent.isUiVisible());
+            break;
+        case minimapVisibleMenuItem:
+            cityComponent.setMinimapVisible (! cityComponent.isMinimapVisible());
             break;
         case triggerTelemetryMenuItem:
             cityComponent.setTriggerTelemetryVisible (! cityComponent.isTriggerTelemetryVisible());

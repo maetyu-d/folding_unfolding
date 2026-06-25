@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <limits>
 #include <optional>
 #include <vector>
 
@@ -158,6 +159,7 @@ void CityComponent::paint (juce::Graphics& g)
     {
         return view.project ({ point.x, point.y, elevation });
     };
+    const auto nowSeconds = currentTimeSeconds();
 
     auto makeLotPath = [&projectGround] (Vec2 centre, float footprint, float elevation)
     {
@@ -260,9 +262,9 @@ void CityComponent::paint (juce::Graphics& g)
         {
             if (cue.tipTip)
             {
-                const auto beat = 0.5f + 0.5f * std::sin (static_cast<float> (currentTimeSeconds()) * 18.0f
+                const auto beat = 0.5f + 0.5f * std::sin (static_cast<float> (nowSeconds) * 18.0f
                                                         + static_cast<float> (cue.sides) * 0.7f);
-                const auto pulse = std::fmod (static_cast<float> (currentTimeSeconds()) * 3.2f
+                const auto pulse = std::fmod (static_cast<float> (nowSeconds) * 3.2f
                                             + static_cast<float> (cue.sides) * 0.11f,
                                             1.0f);
                 const auto reticle = 9.0f + beat * 4.0f;
@@ -342,6 +344,9 @@ void CityComponent::paint (juce::Graphics& g)
     if (triggerTelemetryVisible)
         paintTriggerTelemetry (g, view);
 
+    if (minimapVisible)
+        paintMinimap (g, view);
+
     if (! mouseInCanvas)
         return;
 
@@ -356,7 +361,7 @@ void CityComponent::paint (juce::Graphics& g)
         auto mountPlatterId = -1;
         auto mountStandIndex = -1;
         const auto hasMount = findAvailableMount (hoverPointerWorld,
-                                                  currentTimeSeconds(),
+                                                  nowSeconds,
                                                   previewRadius,
                                                   mountPlatterId,
                                                   mountStandIndex);
@@ -366,9 +371,9 @@ void CityComponent::paint (juce::Graphics& g)
             if (const auto* platter = city.findPlatter (mountPlatterId))
             {
                 const auto clampedStand = juce::jlimit (0, platter->stands - 1, mountStandIndex);
-                previewCentre = platter->standPosition (clampedStand, currentTimeSeconds(), globalTempoBpm);
+                previewCentre = platter->standPosition (clampedStand, nowSeconds, globalTempoBpm);
                 previewElevation = platter->elevation + 12.0f;
-                previewRotation = platter->rotation + platter->rotationAt (currentTimeSeconds(), globalTempoBpm)
+                previewRotation = platter->rotation + platter->rotationAt (nowSeconds, globalTempoBpm)
                                 + juce::MathConstants<float>::twoPi * static_cast<float> (clampedStand)
                                     / static_cast<float> (juce::jlimit (1, 8, platter->stands));
             }
@@ -389,7 +394,7 @@ void CityComponent::paint (juce::Graphics& g)
 
             for (int i = 0; i < platter.stands; ++i)
             {
-                const auto stand = platter.standPosition (i, currentTimeSeconds(), globalTempoBpm);
+                const auto stand = platter.standPosition (i, nowSeconds, globalTempoBpm);
                 const auto standScreen = projectGround (stand, platter.elevation + 18.0f);
                 const auto occupied = isMountOccupied (platter.id, i);
                 const auto highlighted = hasMount && platter.id == mountPlatterId && i == mountStandIndex;
@@ -453,7 +458,7 @@ void CityComponent::paint (juce::Graphics& g)
         auto mountPlatterId = -1;
         auto mountStandIndex = -1;
         const auto hasMount = findAvailableMount (hoverPointerWorld,
-                                                  currentTimeSeconds(),
+                                                  nowSeconds,
                                                   previewDiameter * 0.5f,
                                                   mountPlatterId,
                                                   mountStandIndex);
@@ -463,7 +468,7 @@ void CityComponent::paint (juce::Graphics& g)
             if (const auto* platter = city.findPlatter (mountPlatterId))
             {
                 const auto clampedStand = juce::jlimit (0, platter->stands - 1, mountStandIndex);
-                previewCentre = platter->standPosition (clampedStand, currentTimeSeconds(), globalTempoBpm);
+                previewCentre = platter->standPosition (clampedStand, nowSeconds, globalTempoBpm);
                 previewElevation = platter->elevation + 18.0f;
             }
         }
@@ -483,7 +488,7 @@ void CityComponent::paint (juce::Graphics& g)
 
             for (int i = 0; i < platter.stands; ++i)
             {
-                const auto stand = platter.standPosition (i, currentTimeSeconds(), globalTempoBpm);
+                const auto stand = platter.standPosition (i, nowSeconds, globalTempoBpm);
                 const auto standScreen = projectGround (stand, platter.elevation + 18.0f);
                 const auto occupied = isMountOccupied (platter.id, i);
                 const auto highlighted = hasMount && platter.id == mountPlatterId && i == mountStandIndex;
@@ -534,7 +539,7 @@ void CityComponent::paint (juce::Graphics& g)
         auto mountPlatterId = -1;
         auto mountStandIndex = -1;
         const auto hasMount = findAvailableMount (hoverPointerWorld,
-                                                  currentTimeSeconds(),
+                                                  nowSeconds,
                                                   defaultPlankLength * 0.25f,
                                                   mountPlatterId,
                                                   mountStandIndex);
@@ -544,9 +549,9 @@ void CityComponent::paint (juce::Graphics& g)
             if (const auto* platter = city.findPlatter (mountPlatterId))
             {
                 const auto clampedStand = juce::jlimit (0, platter->stands - 1, mountStandIndex);
-                baseWorld = platter->standPosition (clampedStand, currentTimeSeconds(), globalTempoBpm);
+                baseWorld = platter->standPosition (clampedStand, nowSeconds, globalTempoBpm);
                 elevation = platter->elevation + 10.0f;
-                baseRotation = platter->rotation + platter->rotationAt (currentTimeSeconds(), globalTempoBpm)
+                baseRotation = platter->rotation + platter->rotationAt (nowSeconds, globalTempoBpm)
                              + juce::MathConstants<float>::twoPi * static_cast<float> (clampedStand)
                                 / static_cast<float> (juce::jlimit (1, 8, platter->stands));
             }
@@ -606,7 +611,7 @@ void CityComponent::paint (juce::Graphics& g)
         if (! shouldShowTipTargets (module))
             continue;
 
-        const auto flaps = module.flapTriangles (currentTimeSeconds(), globalTempoBpm);
+        const auto flaps = module.flapTriangles (nowSeconds, globalTempoBpm);
 
         for (size_t i = 0; i < flaps.size(); ++i)
         {
@@ -640,7 +645,7 @@ void CityComponent::paint (juce::Graphics& g)
     {
         if (const auto* selected = city.findModule (selectedId))
         {
-            const auto flaps = selected->flapTriangles (currentTimeSeconds(), globalTempoBpm);
+            const auto flaps = selected->flapTriangles (nowSeconds, globalTempoBpm);
             if (selectedTipIndex < static_cast<int> (flaps.size()))
             {
                 const auto apex = flaps[static_cast<size_t> (selectedTipIndex)][2];
@@ -1309,7 +1314,9 @@ void CityComponent::timerCallback()
         else
             return;
 
-        updateAttachedStructures (transportTimeSeconds);
+        const auto frameTimeSeconds = transportTimeSeconds;
+
+        updateAttachedStructures (frameTimeSeconds);
 
         for (auto& module : city.modules())
         {
@@ -1346,12 +1353,12 @@ void CityComponent::timerCallback()
             powerSwitch.flash = juce::jmax (0.0f, powerSwitch.flash - static_cast<float> (delta * 5.0));
             powerSwitch.pulse = juce::jmax (0.0f, powerSwitch.pulse - static_cast<float> (delta * 0.72));
 
-            if (! powerSwitch.powered && powerSwitch.restoreAtSeconds >= 0.0 && currentTimeSeconds() >= powerSwitch.restoreAtSeconds)
+            if (! powerSwitch.powered && powerSwitch.restoreAtSeconds >= 0.0 && frameTimeSeconds >= powerSwitch.restoreAtSeconds)
             {
                 powerSwitch.powered = true;
                 powerSwitch.restoreAtSeconds = -1.0;
                 powerSwitch.flash = 1.0f;
-                announcePowerChange (powerSwitch, 8, 0.88f, currentTimeSeconds());
+                announcePowerChange (powerSwitch, 8, 0.88f, frameTimeSeconds);
             }
         }
 
@@ -1359,7 +1366,7 @@ void CityComponent::timerCallback()
         {
             source.flash = juce::jmax (0.0f, source.flash - static_cast<float> (delta * 4.6));
 
-            if (! source.powered && source.restoreAtSeconds >= 0.0 && currentTimeSeconds() >= source.restoreAtSeconds)
+            if (! source.powered && source.restoreAtSeconds >= 0.0 && frameTimeSeconds >= source.restoreAtSeconds)
             {
                 source.powered = true;
                 source.restoreAtSeconds = -1.0;
@@ -1376,8 +1383,8 @@ void CityComponent::timerCallback()
             lastCollisionSoundTimeSeconds = -1.0;
         }
 
-        updatePowerSwitches (currentTimeSeconds());
-        updateCollisions (currentTimeSeconds());
+        updatePowerSwitches (frameTimeSeconds);
+        updateCollisions (frameTimeSeconds);
     }
 
     repaint();
@@ -2488,6 +2495,184 @@ void CityComponent::paintTriggerTelemetry (juce::Graphics& g, const IsoProjector
     }
 }
 
+void CityComponent::paintMinimap (juce::Graphics& g, const IsoProjector& view)
+{
+    const auto parent = getLocalBounds().toFloat().reduced (18.0f);
+    const auto size = juce::jlimit (132.0f, 210.0f, juce::jmin (parent.getWidth(), parent.getHeight()) * 0.18f);
+    auto bounds = juce::Rectangle<float> { parent.getRight() - size, parent.getY(), size, size };
+
+    if (uiVisible && toolbar.isVisible() && bounds.intersects (toolbar.getBounds().toFloat()))
+        bounds.translate (0.0f, static_cast<float> (toolbar.getBottom()) + 14.0f - bounds.getY());
+
+    bounds = bounds.getIntersection (parent);
+    if (bounds.getWidth() < 96.0f || bounds.getHeight() < 96.0f)
+        return;
+
+    const auto panel = colourWireframeMode ? juce::Colour (0xd904070c)
+                                           : juce::Colour (0xeef8fbf1);
+    const auto line = colourWireframeMode ? juce::Colour (0xcc23f7ff)
+                                          : juce::Colour (0x88263832);
+    const auto quiet = colourWireframeMode ? juce::Colour (0xff8cefe5)
+                                           : juce::Colour (0xff65766f);
+
+    auto minX = std::numeric_limits<float>::max();
+    auto minY = std::numeric_limits<float>::max();
+    auto maxX = std::numeric_limits<float>::lowest();
+    auto maxY = std::numeric_limits<float>::lowest();
+    auto hasPoint = false;
+
+    auto includePoint = [&] (Vec2 point, float radius = 0.0f)
+    {
+        hasPoint = true;
+        minX = juce::jmin (minX, point.x - radius);
+        minY = juce::jmin (minY, point.y - radius);
+        maxX = juce::jmax (maxX, point.x + radius);
+        maxY = juce::jmax (maxY, point.y + radius);
+    };
+
+    for (const auto& module : city.modules())
+        includePoint (module.position, module.radius + module.flapDepth);
+
+    for (const auto& platter : city.platters())
+        includePoint (platter.position, platter.hitRadius());
+
+    for (const auto& block : city.blocks())
+        includePoint (block.position, block.halfSize());
+
+    for (const auto& plank : city.planks())
+    {
+        includePoint (plank.position, 18.0f);
+        includePoint (plank.socketPosition(), plank.socketRadius());
+    }
+
+    for (const auto& powerSwitch : city.powerSwitches())
+        includePoint (powerSwitch.position, powerSwitch.areaRadius);
+
+    for (const auto& source : city.powerSources())
+        includePoint (source.position, source.radius);
+
+    const auto topLeft = view.unprojectToGround ({ 0.0f, 0.0f });
+    const auto topRight = view.unprojectToGround ({ static_cast<float> (getWidth()), 0.0f });
+    const auto bottomRight = view.unprojectToGround ({ static_cast<float> (getWidth()), static_cast<float> (getHeight()) });
+    const auto bottomLeft = view.unprojectToGround ({ 0.0f, static_cast<float> (getHeight()) });
+    includePoint (topLeft);
+    includePoint (topRight);
+    includePoint (bottomRight);
+    includePoint (bottomLeft);
+
+    if (! hasPoint)
+        return;
+
+    const auto pad = juce::jmax (buildGridSize * 1.2f, juce::jmax (maxX - minX, maxY - minY) * 0.10f);
+    minX -= pad;
+    minY -= pad;
+    maxX += pad;
+    maxY += pad;
+
+    const auto worldWidth = juce::jmax (1.0f, maxX - minX);
+    const auto worldHeight = juce::jmax (1.0f, maxY - minY);
+    const auto content = bounds.reduced (12.0f);
+    const auto scale = juce::jmin (content.getWidth() / worldWidth, content.getHeight() / worldHeight);
+    const auto offset = juce::Point<float> { content.getCentreX() - (minX + maxX) * 0.5f * scale,
+                                             content.getCentreY() - (minY + maxY) * 0.5f * scale };
+
+    auto mapPoint = [&] (Vec2 point)
+    {
+        return juce::Point<float> { point.x * scale + offset.x, point.y * scale + offset.y };
+    };
+
+    auto selected = [this] (CityObjectKind kind, int id)
+    {
+        return selectedKind == kind && selectedId == id;
+    };
+
+    g.setColour (juce::Colours::black.withAlpha (colourWireframeMode ? 0.36f : 0.12f));
+    g.fillRoundedRectangle (bounds.translated (0.0f, 3.0f), 14.0f);
+    g.setColour (panel);
+    g.fillRoundedRectangle (bounds, 14.0f);
+    g.setColour (line.withAlpha (0.72f));
+    g.drawRoundedRectangle (bounds, 14.0f, 1.2f);
+
+    for (int i = 1; i < 4; ++i)
+    {
+        const auto x = content.getX() + content.getWidth() * static_cast<float> (i) / 4.0f;
+        const auto y = content.getY() + content.getHeight() * static_cast<float> (i) / 4.0f;
+        g.setColour (line.withAlpha (0.10f));
+        g.drawVerticalLine (juce::roundToInt (x), content.getY(), content.getBottom());
+        g.drawHorizontalLine (juce::roundToInt (y), content.getX(), content.getRight());
+    }
+
+    juce::Path viewPath;
+    const Vec2 viewport[] = { topLeft, topRight, bottomRight, bottomLeft };
+    for (int i = 0; i < 4; ++i)
+    {
+        const auto point = mapPoint (viewport[i]);
+        if (i == 0)
+            viewPath.startNewSubPath (point);
+        else
+            viewPath.lineTo (point);
+    }
+    viewPath.closeSubPath();
+    g.setColour ((colourWireframeMode ? juce::Colour (0xff23f7ff) : juce::Colour (0xff32c9b1)).withAlpha (0.12f));
+    g.fillPath (viewPath);
+    g.setColour ((colourWireframeMode ? juce::Colour (0xff23f7ff) : juce::Colour (0xff32c9b1)).withAlpha (0.82f));
+    g.strokePath (viewPath, juce::PathStrokeType (1.6f));
+
+    auto drawDot = [&] (Vec2 position, float radius, juce::Colour colour, bool isSelected)
+    {
+        const auto point = mapPoint (position);
+        const auto r = juce::jlimit (2.5f, 8.0f, radius * scale);
+        g.setColour (colour.withAlpha (isSelected ? 0.34f : 0.18f));
+        g.fillEllipse (point.x - r * 1.8f, point.y - r * 1.8f, r * 3.6f, r * 3.6f);
+        g.setColour (colour.withAlpha (isSelected ? 0.98f : 0.78f));
+        g.fillEllipse (point.x - r, point.y - r, r * 2.0f, r * 2.0f);
+        if (isSelected)
+        {
+            g.setColour (juce::Colours::white.withAlpha (colourWireframeMode ? 0.86f : 0.72f));
+            g.drawEllipse (point.x - r - 2.0f, point.y - r - 2.0f, (r + 2.0f) * 2.0f, (r + 2.0f) * 2.0f, 1.4f);
+        }
+    };
+
+    auto drawLine = [&] (Vec2 a, Vec2 b, juce::Colour colour, float thickness)
+    {
+        g.setColour (colour.withAlpha (0.72f));
+        g.drawLine ({ mapPoint (a), mapPoint (b) }, thickness);
+    };
+
+    for (const auto& block : city.blocks())
+    {
+        const auto centre = mapPoint (block.position);
+        const auto half = juce::jmax (2.5f, block.halfSize() * scale);
+        const auto isSelected = selected (CityObjectKind::block, block.id);
+        g.setColour ((block.powered ? juce::Colour (0xffa8e06f) : quiet).withAlpha (isSelected ? 0.38f : 0.22f));
+        g.fillRect (juce::Rectangle<float> { centre.x - half, centre.y - half, half * 2.0f, half * 2.0f });
+        g.setColour ((isSelected ? juce::Colours::white : line).withAlpha (0.78f));
+        g.drawRect (juce::Rectangle<float> { centre.x - half, centre.y - half, half * 2.0f, half * 2.0f }, isSelected ? 2.0f : 1.0f);
+    }
+
+    for (const auto& plank : city.planks())
+    {
+        const auto isSelected = selected (CityObjectKind::plank, plank.id);
+        drawLine (plank.position, plank.socketPosition(), isSelected ? juce::Colour (0xffffffff) : juce::Colour (0xffff9f6e), isSelected ? 2.6f : 1.8f);
+    }
+
+    for (const auto& platter : city.platters())
+        drawDot (platter.position, platter.hitRadius() * 0.18f, platter.powered ? juce::Colour (0xff75d7ff) : quiet, selected (CityObjectKind::platter, platter.id));
+
+    for (const auto& module : city.modules())
+        drawDot (module.position, module.radius * 0.25f, module.powered ? juce::Colour (0xffffcf5f) : quiet, selected (CityObjectKind::module, module.id));
+
+    for (const auto& powerSwitch : city.powerSwitches())
+        drawDot (powerSwitch.position, powerSwitch.triggerRadius * 0.28f, powerSwitch.powered ? juce::Colour (0xff60f0b2) : juce::Colour (0xffff6f91), selected (CityObjectKind::powerSwitch, powerSwitch.id));
+
+    for (const auto& source : city.powerSources())
+        drawDot (source.position, source.radius * 0.24f, source.powered ? juce::Colour (0xfffff1a8) : quiet, selected (CityObjectKind::powerSource, source.id));
+
+    g.setColour (quiet.withAlpha (0.82f));
+    g.setFont (juce::FontOptions (11.0f, juce::Font::bold));
+    g.drawText ("map", bounds.reduced (10.0f).removeFromTop (14.0f), juce::Justification::centredLeft);
+}
+
 void CityComponent::triggerCitySound (SonicEventType type, int sidesA, int sidesB, float foldA, float foldB, float pitchOverride)
 {
     if (onCitySound)
@@ -3525,6 +3710,20 @@ void CityComponent::setUiVisible (bool shouldBeVisible)
     repaint();
 }
 
+bool CityComponent::isMinimapVisible() const noexcept
+{
+    return minimapVisible;
+}
+
+void CityComponent::setMinimapVisible (bool shouldBeVisible)
+{
+    if (minimapVisible == shouldBeVisible)
+        return;
+
+    minimapVisible = shouldBeVisible;
+    repaint();
+}
+
 void CityComponent::armSoundTriggers() noexcept
 {
     soundTriggersArmed.store (true, std::memory_order_release);
@@ -3693,6 +3892,7 @@ juce::var CityComponent::createState() const
     root->setProperty ("viewMode", static_cast<int> (projector.viewMode));
     root->setProperty ("colourWireframeMode", colourWireframeMode);
     root->setProperty ("uiVisible", uiVisible);
+    root->setProperty ("minimapVisible", minimapVisible);
 
     juce::Array<juce::var> modules;
     for (const auto& module : city.modules())
@@ -3858,6 +4058,7 @@ bool CityComponent::loadState (const juce::var& state)
                                  : CityViewMode::isometric;
         colourWireframeMode = boolProperty (*root, "colourWireframeMode", colourWireframeMode);
         uiVisible = boolProperty (*root, "uiVisible", uiVisible);
+        minimapVisible = boolProperty (*root, "minimapVisible", minimapVisible);
 
         if (const auto* blocks = root->getProperty ("blocks").getArray())
         {

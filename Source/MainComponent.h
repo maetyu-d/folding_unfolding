@@ -37,6 +37,7 @@ private:
         topDownViewMenuItem,
         colourWireframeMenuItem,
         uiVisibleMenuItem,
+        minimapVisibleMenuItem,
         triggerTelemetryMenuItem,
         activationRingsMenuItem,
         soundingNotesMenuItem
