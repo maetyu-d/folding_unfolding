@@ -2,6 +2,7 @@
 
 #include "JuceIncludes.h"
 #include "PowerSwitch.h"
+#include "SonicEvent.h"
 
 #include <array>
 #include <functional>
@@ -47,6 +48,10 @@ public:
                     const std::array<float, 8>& tipRandomLow,
                     const std::array<float, 8>& tipRandomHigh,
                     const std::array<float, 8>& tipProbabilities,
+                    const std::array<TipSoundLanguage, 8>& tipSoundLanguages,
+                    const std::array<juce::String, 8>& tipSoundPrograms,
+                    int selectedTipIndex,
+                    bool tipProgramMode,
                     float tempoBpm,
                     bool playing,
                     bool switchSelected,
@@ -66,6 +71,8 @@ public:
     std::function<void (int tipIndex, bool random)> onTipPitchRandomChanged;
     std::function<void (int tipIndex, float low, float high)> onTipPitchRangeChanged;
     std::function<void (int tipIndex, float probability)> onTipProbabilityChanged;
+    std::function<void (int tipIndex, TipSoundLanguage language)> onTipSoundLanguageChanged;
+    std::function<void (int tipIndex, const juce::String& program)> onTipSoundProgramChanged;
     std::function<void (float rateDivision)> onRateDivisionChanged;
     std::function<void (float phaseDegrees)> onPhaseChanged;
     std::function<void (float tempoBpm)> onTempoChanged;
@@ -120,6 +127,7 @@ private:
     void commitTipPitchValue (int tipIndex);
     void commitTipPitchRange (int tipIndex);
     void commitTipProbability (int tipIndex);
+    void commitTipSoundProgram();
     void applyTheme();
     static float pitchValueFromText (const juce::String& text);
     static juce::String pitchTextForValue (float value);
@@ -148,8 +156,12 @@ private:
     LabeledCombo rateControl;
     LabeledCombo switchActivationControl;
     LabeledCombo switchRetriggerControl;
+    LabeledCombo tipSoundLanguageControl;
     juce::Label pitchListTitle;
     std::array<TipPitchRow, 8> tipPitchRows;
+    juce::Label tipProgramTitle;
+    juce::TextEditor tipProgramEditor;
+    juce::TextButton tipProgramApplyButton { "Apply" };
     juce::TextButton deleteButton { "Delete" };
     juce::TextButton clearButton { "Clear" };
     juce::TextButton playButton { "Play" };
@@ -165,8 +177,10 @@ private:
     bool activeRotationControl = false;
     bool activeTipSelected = false;
     bool activePolygonSelected = false;
+    bool activeTipProgramMode = false;
     bool wireframeTheme = false;
     int activeSides = 6;
+    int activeTipIndex = 0;
     BuildMode activeBuildMode = BuildMode::polygon;
     BuildMode currentBuildMode = BuildMode::polygon;
 };

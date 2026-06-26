@@ -38,12 +38,17 @@ target_sources(unfolding
         Source/CityModel.h
         Source/CollisionSynth.cpp
         Source/CollisionSynth.h
+        Source/EmbeddedScAudioEngine.cpp
+        Source/EmbeddedScAudioEngine.h
         Source/FoldingModule.cpp
         Source/FoldingModule.h
         Source/FairgroundPlatter.h
         Source/Plank.h
         Source/StackBlock.h
         Source/PowerSwitch.h
+        Source/InternalEvent.h
+        Source/Mode2EmbeddedAudioEngine.cpp
+        Source/Mode2EmbeddedAudioEngine.h
         Source/Geometry.h
         Source/JuceIncludes.h
         Source/Main.cpp
@@ -57,7 +62,32 @@ target_compile_definitions(unfolding
         JUCE_USE_CURL=0
         JUCE_APPLICATION_NAME_STRING="$<TARGET_PROPERTY:unfolding,JUCE_PRODUCT_NAME>"
         JUCE_APPLICATION_VERSION_STRING="$<TARGET_PROPERTY:unfolding,JUCE_VERSION>"
+        GRIDCOLLIDER_ALCHEMY_SC_ROOT="/Users/user/Documents/weld2/ChucK_weld_engine"
 )
+
+if (EXISTS "/Users/user/Documents/weld2/ChucK_weld_engine/third_party/supercollider/include/server/SC_WorldOptions.h")
+    target_include_directories(unfolding SYSTEM
+        PRIVATE
+            "/Users/user/Documents/weld2/ChucK_weld_engine/third_party/supercollider/include/common"
+            "/Users/user/Documents/weld2/ChucK_weld_engine/third_party/supercollider/include/plugin_interface"
+            "/Users/user/Documents/weld2/ChucK_weld_engine/third_party/supercollider/include/server")
+    target_compile_definitions(unfolding PRIVATE GRIDCOLLIDER_HAS_SC_HEADERS=1)
+endif()
+
+if (EXISTS "/Users/user/Documents/weld2/ChucK_weld_engine/build/libweld_chuck_engine.a"
+    AND EXISTS "/Users/user/Documents/weld2/ChucK_weld_engine/build/libchuck_core.a"
+    AND CMAKE_BUILD_TYPE STREQUAL "Release")
+    target_include_directories(unfolding SYSTEM
+        PRIVATE
+            "/Users/user/Documents/weld2/ChucK_weld_engine/Source/WeldChucK"
+            "/Users/user/Documents/weld2/ChucK_weld_engine/third_party/chuck/src/core"
+            "/Users/user/Documents/weld2/ChucK_weld_engine/third_party/chuck/src/core/lo")
+    target_compile_definitions(unfolding PRIVATE UNFOLDING_HAS_WELD_CHUCK=1)
+    target_link_libraries(unfolding
+        PRIVATE
+            "/Users/user/Documents/weld2/ChucK_weld_engine/build/libweld_chuck_engine.a"
+            "/Users/user/Documents/weld2/ChucK_weld_engine/build/libchuck_core.a")
+endif()
 
 target_link_libraries(unfolding
     PRIVATE

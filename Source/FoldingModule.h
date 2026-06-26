@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Geometry.h"
+#include "SonicEvent.h"
 #include <array>
 #include <vector>
 
@@ -31,15 +32,20 @@ struct FoldingModule
     std::array<float, 8> tipPitchRandomLow {};
     std::array<float, 8> tipPitchRandomHigh {};
     std::array<float, 8> tipProbabilities { 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f };
+    std::array<TipSoundLanguage, 8> tipSoundLanguages {};
+    std::array<juce::String, 8> tipSoundPrograms {};
 
     float foldAt (double timeSeconds, float globalTempoBpm = defaultGlobalTempoBpm) const noexcept;
     float collisionRadiusAt (double timeSeconds, float globalTempoBpm = defaultGlobalTempoBpm) const noexcept;
     float angularSpeedForTempo (float globalTempoBpm) const noexcept;
     float pitchForTip (int tipIndex) const noexcept;
     bool tipIsMuted (int tipIndex) const noexcept;
+    TipSoundLanguage soundLanguageForTip (int tipIndex) const noexcept;
+    const juce::String& soundProgramForTip (int tipIndex) const noexcept;
     float randomPitchForTip (int tipIndex, juce::Random& random) const noexcept;
     bool shouldPlayTip (int tipIndex, juce::Random& random) const noexcept;
     void initialiseTipPitches() noexcept;
+    static juce::String defaultTipSoundProgram (TipSoundLanguage language, int tipIndex = 0, int sides = 6);
     int timeSignatureNumerator() const noexcept { return sides; }
     std::vector<Vec3> floorVertices() const;
     std::vector<std::array<Vec3, 3>> flapTriangles (double timeSeconds,

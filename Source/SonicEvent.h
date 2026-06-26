@@ -9,3 +9,9 @@ enum class SonicEventType
     tipTrigger,
     sectionChange
 };
+
+enum class TipSoundLanguage
+{
+    superCollider,
+    chuck
+};

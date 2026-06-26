@@ -57,9 +57,21 @@ public:
     void setUiVisible (bool shouldBeVisible);
     bool isMinimapVisible() const noexcept;
     void setMinimapVisible (bool shouldBeVisible);
+    void setMode2ProgramEditingEnabled (bool shouldBeEnabled);
     void armSoundTriggers() noexcept;
+    float currentGlobalTempo() const;
+    double currentTransportTimeSeconds() const;
+    bool isTransportPlaying() const;
 
-    std::function<void (SonicEventType type, int sidesA, int sidesB, float foldA, float foldB, float pitchOverride)> onCitySound;
+    std::function<void (SonicEventType type,
+                        int sidesA,
+                        int sidesB,
+                        float foldA,
+                        float foldB,
+                        float pitchOverride,
+                        TipSoundLanguage language,
+                        const juce::String& program,
+                        int tipIndex)> onCitySound;
 
 private:
     enum class DragMode
@@ -89,7 +101,15 @@ private:
     void paintActivationRings (juce::Graphics& g, const IsoProjector& view);
     void paintTriggerTelemetry (juce::Graphics& g, const IsoProjector& view);
     void paintMinimap (juce::Graphics& g, const IsoProjector& view);
-    void triggerCitySound (SonicEventType type, int sidesA, int sidesB, float foldA, float foldB, float pitchOverride = -1.0f);
+    void triggerCitySound (SonicEventType type,
+                           int sidesA,
+                           int sidesB,
+                           float foldA,
+                           float foldB,
+                           float pitchOverride = -1.0f,
+                           TipSoundLanguage language = TipSoundLanguage::superCollider,
+                           const juce::String& program = {},
+                           int tipIndex = -1);
     void configureToolbar();
     void syncToolbar();
     CityRenderState createRenderState() const;
@@ -107,6 +127,8 @@ private:
     void setSelectedTipRandom (int tipIndex, bool random);
     void setSelectedTipRandomRange (int tipIndex, float low, float high);
     void setSelectedTipProbability (int tipIndex, float probability);
+    void setSelectedTipSoundLanguage (int tipIndex, TipSoundLanguage language);
+    void setSelectedTipSoundProgram (int tipIndex, const juce::String& program);
     void setBuildMode (CityToolbar::BuildMode mode);
     void setSelectedOrDefaultPlatterStands (int stands);
     void setSelectedOrDefaultPlatterDiameter (float diameter);
@@ -201,6 +223,7 @@ private:
     bool colourWireframeMode = false;
     bool uiVisible = true;
     bool minimapVisible = true;
+    bool mode2ProgramEditing = false;
     double lastCollisionSoundTimeSeconds = -1.0;
     std::atomic<bool> soundTriggersArmed { false };
     std::atomic<bool> soundTriggerResetRequested { true };

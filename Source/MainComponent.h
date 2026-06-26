@@ -3,6 +3,7 @@
 #include "CityComponent.h"
 #include "CollisionSynth.h"
 #include "JuceIncludes.h"
+#include "Mode2EmbeddedAudioEngine.h"
 
 
 class MainComponent final : public juce::AudioAppComponent,
@@ -21,9 +22,23 @@ public:
     void getNextAudioBlock (const juce::AudioSourceChannelInfo& bufferToFill) override;
     void releaseResources() override;
 
-    void triggerCitySound (SonicEventType type, int sidesA, int sidesB, float foldA, float foldB, float pitchOverride = -1.0f);
+    void triggerCitySound (SonicEventType type,
+                           int sidesA,
+                           int sidesB,
+                           float foldA,
+                           float foldB,
+                           float pitchOverride = -1.0f,
+                           TipSoundLanguage language = TipSoundLanguage::superCollider,
+                           const juce::String& program = {},
+                           int tipIndex = -1);
 
 private:
+    enum class AudioMode
+    {
+        mode1Internal,
+        mode2EmbeddedCode
+    };
+
     enum MenuItemIds
     {
         newCityMenuItem = 1,
@@ -40,15 +55,21 @@ private:
         minimapVisibleMenuItem,
         triggerTelemetryMenuItem,
         activationRingsMenuItem,
-        soundingNotesMenuItem
+        soundingNotesMenuItem,
+        audioMode1MenuItem,
+        audioMode2MenuItem
     };
 
     void startNewCity();
     void openCity();
     void saveCity();
     void showFileError (const juce::String& title, const juce::String& message);
+    void setAudioMode (AudioMode mode);
+    static juce::String tickedText (juce::String text, bool ticked);
 
     CityComponent cityComponent;
     CollisionSynth collisionSynth;
+    Mode2EmbeddedAudioEngine mode2EmbeddedAudioEngine;
+    AudioMode audioMode = AudioMode::mode1Internal;
     std::unique_ptr<juce::FileChooser> fileChooser;
 };

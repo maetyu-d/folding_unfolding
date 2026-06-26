@@ -13,9 +13,11 @@ If `JUCE_DIR` is not supplied, CMake will use a local `JUCE/` folder if present,
 
 ## Controls
 
+- Mode menu: `Mode 1` uses unfolding's internal synth; `Mode 2` lets each polygon tip hold an embedded SuperCollider or ChucK snippet, with no external SuperCollider or ChucK process required
 - On-screen toolbar: choose Poly, Spin, Block, or Cable build mode; set meter/sides, rate division, phase, stands, diameter, block levels, block size, radius, flap depth, zoom, delete, or clear the city
 - Rate divisions include straight, dotted, and triplet values from `1/1` through `1/32`
 - Platter rates are bar-based: `1/4 bar`, `1/2 bar`, `1 bar`, `2 bars`, `4 bars`, or `8 bars`
+- In Mode 2, select a polygon tip to edit its snippet. SuperCollider snippets are wrapped into a per-tip `SynthDef` and receive `pitch`, `amp`, `sustain`, `pan`, `fold`, `otherFold`, `sides`, `otherSides`, `tip`, `velocity`, and `tempo` controls. ChucK snippets use `hostPitch`, `hostAmp`, `hostSustain`, `hostFold`, `hostOtherFold`, `hostVelocity`, `hostTempo`, `hostTip`, `hostSides`, and `hostOtherSides` when a matching embedded ChucK build is linked.
 - Power districts glow green when on and pink when off; polygon flap tips can strike switch pads to toggle district power
 - Cable mode: click empty space to place a switch, Command-click empty space to place a power source, click a source then a switch to feed it, or click a switch then a polygon, platter, or block to connect or disconnect its explicit power cable
 - Select a switch in Cable mode to choose tip-toggle or timed-off activation, set the timed-off duration, and choose whether hits during that off window are ignored or turn it back on

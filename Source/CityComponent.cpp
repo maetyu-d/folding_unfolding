@@ -1906,7 +1906,10 @@ void CityComponent::updateCollisions (double timeSeconds)
                                       targetProxy.module.sides,
                                       source.module.foldAt (timeSeconds, globalTempoBpm),
                                       targetProxy.module.foldAt (timeSeconds, globalTempoBpm),
-                                      tipPitch);
+                                      tipPitch,
+                                      source.module.soundLanguageForTip (static_cast<int> (tipIndex)),
+                                      source.module.soundProgramForTip (static_cast<int> (tipIndex)),
+                                      static_cast<int> (tipIndex));
                 };
 
                 for (size_t tipA = 0; tipA < flapsA.size(); ++tipA)
@@ -2122,7 +2125,10 @@ void CityComponent::updatePowerSwitches (double timeSeconds)
                                           powerSwitch.powered ? 8 : 3,
                                           proxy.module.foldAt (timeSeconds, globalTempoBpm),
                                           powerSwitch.powered ? 1.0f : 0.0f,
-                                          tipPitch);
+                                          tipPitch,
+                                          proxy.module.soundLanguageForTip (static_cast<int> (flapIndex)),
+                                          proxy.module.soundProgramForTip (static_cast<int> (flapIndex)),
+                                          static_cast<int> (flapIndex));
                     }
 
                     announcePowerChange (powerSwitch,
@@ -2673,10 +2679,18 @@ void CityComponent::paintMinimap (juce::Graphics& g, const IsoProjector& view)
     g.drawText ("map", bounds.reduced (10.0f).removeFromTop (14.0f), juce::Justification::centredLeft);
 }
 
-void CityComponent::triggerCitySound (SonicEventType type, int sidesA, int sidesB, float foldA, float foldB, float pitchOverride)
+void CityComponent::triggerCitySound (SonicEventType type,
+                                      int sidesA,
+                                      int sidesB,
+                                      float foldA,
+                                      float foldB,
+                                      float pitchOverride,
+                                      TipSoundLanguage language,
+                                      const juce::String& program,
+                                      int tipIndex)
 {
     if (onCitySound)
-        onCitySound (type, sidesA, sidesB, foldA, foldB, pitchOverride);
+        onCitySound (type, sidesA, sidesB, foldA, foldB, pitchOverride, language, program, tipIndex);
 }
 
 void CityComponent::configureToolbar()
@@ -2751,6 +2765,17 @@ void CityComponent::configureToolbar()
     {
         grabKeyboardFocus();
         setSelectedTipProbability (tipIndex, probability);
+    };
+
+    toolbar.onTipSoundLanguageChanged = [this] (int tipIndex, TipSoundLanguage language)
+    {
+        grabKeyboardFocus();
+        setSelectedTipSoundLanguage (tipIndex, language);
+    };
+
+    toolbar.onTipSoundProgramChanged = [this] (int tipIndex, const juce::String& program)
+    {
+        setSelectedTipSoundProgram (tipIndex, program);
     };
 
     toolbar.onRateDivisionChanged = [this] (float rateDivision)
@@ -2870,6 +2895,8 @@ void CityComponent::syncToolbar()
     std::array<float, 8> tipRandomLow {};
     std::array<float, 8> tipRandomHigh {};
     std::array<float, 8> tipProbabilities {};
+    std::array<TipSoundLanguage, 8> tipSoundLanguages {};
+    std::array<juce::String, 8> tipSoundPrograms {};
     auto tempoBpm = globalTempoBpm;
     auto playing = transportPlaying;
     auto switchSelected = false;
@@ -2909,6 +2936,8 @@ void CityComponent::syncToolbar()
                 tipRandomLow = selected->tipPitchRandomLow;
                 tipRandomHigh = selected->tipPitchRandomHigh;
                 tipProbabilities = selected->tipProbabilities;
+                tipSoundLanguages = selected->tipSoundLanguages;
+                tipSoundPrograms = selected->tipSoundPrograms;
                 if (selectedTipIndex >= 0 && selectedTipIndex < selected->sides)
                 {
                     tipSelected = true;
@@ -2987,6 +3016,10 @@ void CityComponent::syncToolbar()
                        tipRandomLow,
                        tipRandomHigh,
                        tipProbabilities,
+                       tipSoundLanguages,
+                       tipSoundPrograms,
+                       selectedTipIndex,
+                       mode2ProgramEditing,
                        tempoBpm,
                        playing,
                        switchSelected,
@@ -3348,6 +3381,69 @@ void CityComponent::setSelectedTipProbability (int tipIndex, float probability)
     repaint();
 }
 
+void CityComponent::setSelectedTipSoundLanguage (int tipIndex, TipSoundLanguage language)
+{
+    recordUndoState();
+
+    {
+        const juce::ScopedLock lock (modelLock);
+
+        if (selectedKind == CityObjectKind::module && tipIndex >= 0)
+        {
+            if (auto* selected = city.findModule (selectedId))
+            {
+                const auto index = static_cast<size_t> (juce::jlimit (0, 7, tipIndex));
+                const auto oldLanguage = selected->tipSoundLanguages[index];
+                const auto currentProgram = selected->tipSoundPrograms[index].trim();
+                const auto oldDefault = FoldingModule::defaultTipSoundProgram (oldLanguage,
+                                                                               static_cast<int> (index),
+                                                                               selected->sides).trim();
+                selected->tipSoundLanguages[index] = language;
+
+                if (currentProgram.isEmpty() || currentProgram == oldDefault)
+                    selected->tipSoundPrograms[index] = FoldingModule::defaultTipSoundProgram (language,
+                                                                                               static_cast<int> (index),
+                                                                                               selected->sides);
+            }
+        }
+    }
+
+    syncToolbar();
+    repaint();
+}
+
+void CityComponent::setSelectedTipSoundProgram (int tipIndex, const juce::String& program)
+{
+    auto shouldUpdate = false;
+
+    {
+        const juce::ScopedLock lock (modelLock);
+
+        if (selectedKind == CityObjectKind::module && tipIndex >= 0)
+            if (auto* selected = city.findModule (selectedId))
+            {
+                const auto index = static_cast<size_t> (juce::jlimit (0, 7, tipIndex));
+                shouldUpdate = selected->tipSoundPrograms[index] != program;
+            }
+    }
+
+    if (! shouldUpdate)
+        return;
+
+    recordUndoState();
+
+    {
+        const juce::ScopedLock lock (modelLock);
+
+        if (selectedKind == CityObjectKind::module && tipIndex >= 0)
+            if (auto* selected = city.findModule (selectedId))
+                selected->tipSoundPrograms[static_cast<size_t> (juce::jlimit (0, 7, tipIndex))] = program;
+    }
+
+    syncToolbar();
+    repaint();
+}
+
 void CityComponent::setBuildMode (CityToolbar::BuildMode mode)
 {
     {
@@ -3530,6 +3626,24 @@ void CityComponent::setGlobalTempo (float bpm)
 
     syncToolbar();
     repaint();
+}
+
+float CityComponent::currentGlobalTempo() const
+{
+    const juce::ScopedLock lock (modelLock);
+    return globalTempoBpm;
+}
+
+double CityComponent::currentTransportTimeSeconds() const
+{
+    const juce::ScopedLock lock (modelLock);
+    return transportTimeSeconds;
+}
+
+bool CityComponent::isTransportPlaying() const
+{
+    const juce::ScopedLock lock (modelLock);
+    return transportPlaying;
 }
 
 void CityComponent::playTransport()
@@ -3722,6 +3836,15 @@ void CityComponent::setMinimapVisible (bool shouldBeVisible)
 
     minimapVisible = shouldBeVisible;
     repaint();
+}
+
+void CityComponent::setMode2ProgramEditingEnabled (bool shouldBeEnabled)
+{
+    if (mode2ProgramEditing == shouldBeEnabled)
+        return;
+
+    mode2ProgramEditing = shouldBeEnabled;
+    syncToolbar();
 }
 
 void CityComponent::armSoundTriggers() noexcept
@@ -3918,17 +4041,23 @@ juce::var CityComponent::createState() const
         juce::Array<juce::var> tipPitchRandomLow;
         juce::Array<juce::var> tipPitchRandomHigh;
         juce::Array<juce::var> tipProbabilities;
+        juce::Array<juce::var> tipSoundLanguages;
+        juce::Array<juce::var> tipSoundPrograms;
         for (size_t i = 0; i < module.tipPitches.size(); ++i)
         {
             tipPitchRandom.add (module.tipPitchRandom[i]);
             tipPitchRandomLow.add (module.tipPitchRandomLow[i]);
             tipPitchRandomHigh.add (module.tipPitchRandomHigh[i]);
             tipProbabilities.add (module.tipProbabilities[i]);
+            tipSoundLanguages.add (static_cast<int> (module.tipSoundLanguages[i]));
+            tipSoundPrograms.add (module.tipSoundPrograms[i]);
         }
         item->setProperty ("tipPitchRandom", tipPitchRandom);
         item->setProperty ("tipPitchRandomLow", tipPitchRandomLow);
         item->setProperty ("tipPitchRandomHigh", tipPitchRandomHigh);
         item->setProperty ("tipProbabilities", tipProbabilities);
+        item->setProperty ("tipSoundLanguages", tipSoundLanguages);
+        item->setProperty ("tipSoundPrograms", tipSoundPrograms);
         item->setProperty ("powered", module.powered);
         modules.add (juce::var (item.get()));
     }
@@ -4129,6 +4258,20 @@ bool CityComponent::loadState (const juce::var& state)
                         const auto count = juce::jmin (static_cast<int> (module.tipProbabilities.size()), probabilities->size());
                         for (int i = 0; i < count; ++i)
                             module.tipProbabilities[static_cast<size_t> (i)] = juce::jlimit (0.0f, 1.0f, static_cast<float> ((double) probabilities->getReference (i)));
+                    }
+                    if (const auto* languages = object->getProperty ("tipSoundLanguages").getArray())
+                    {
+                        const auto count = juce::jmin (static_cast<int> (module.tipSoundLanguages.size()), languages->size());
+                        for (int i = 0; i < count; ++i)
+                            module.tipSoundLanguages[static_cast<size_t> (i)] = static_cast<int> (languages->getReference (i)) == static_cast<int> (TipSoundLanguage::chuck)
+                                                                                  ? TipSoundLanguage::chuck
+                                                                                  : TipSoundLanguage::superCollider;
+                    }
+                    if (const auto* programs = object->getProperty ("tipSoundPrograms").getArray())
+                    {
+                        const auto count = juce::jmin (static_cast<int> (module.tipSoundPrograms.size()), programs->size());
+                        for (int i = 0; i < count; ++i)
+                            module.tipSoundPrograms[static_cast<size_t> (i)] = programs->getReference (i).toString();
                     }
                     module.powered = boolProperty (*object, "powered", module.powered);
                     city.modules().push_back (module);
@@ -4383,17 +4526,23 @@ bool CityComponent::copySelectionToClipboard() const
         juce::Array<juce::var> tipPitchRandomLow;
         juce::Array<juce::var> tipPitchRandomHigh;
         juce::Array<juce::var> tipProbabilities;
+        juce::Array<juce::var> tipSoundLanguages;
+        juce::Array<juce::var> tipSoundPrograms;
         for (size_t i = 0; i < module->tipPitches.size(); ++i)
         {
             tipPitchRandom.add (module->tipPitchRandom[i]);
             tipPitchRandomLow.add (module->tipPitchRandomLow[i]);
             tipPitchRandomHigh.add (module->tipPitchRandomHigh[i]);
             tipProbabilities.add (module->tipProbabilities[i]);
+            tipSoundLanguages.add (static_cast<int> (module->tipSoundLanguages[i]));
+            tipSoundPrograms.add (module->tipSoundPrograms[i]);
         }
         item->setProperty ("tipPitchRandom", tipPitchRandom);
         item->setProperty ("tipPitchRandomLow", tipPitchRandomLow);
         item->setProperty ("tipPitchRandomHigh", tipPitchRandomHigh);
         item->setProperty ("tipProbabilities", tipProbabilities);
+        item->setProperty ("tipSoundLanguages", tipSoundLanguages);
+        item->setProperty ("tipSoundPrograms", tipSoundPrograms);
     }
     else if (selectedKind == CityObjectKind::platter)
     {
@@ -4533,6 +4682,20 @@ bool CityComponent::pasteSelectionFromClipboard()
                 const auto count = juce::jmin (static_cast<int> (module.tipProbabilities.size()), probabilities->size());
                 for (int i = 0; i < count; ++i)
                     module.tipProbabilities[static_cast<size_t> (i)] = juce::jlimit (0.0f, 1.0f, static_cast<float> ((double) probabilities->getReference (i)));
+            }
+            if (const auto* languages = item->getProperty ("tipSoundLanguages").getArray())
+            {
+                const auto count = juce::jmin (static_cast<int> (module.tipSoundLanguages.size()), languages->size());
+                for (int i = 0; i < count; ++i)
+                    module.tipSoundLanguages[static_cast<size_t> (i)] = static_cast<int> (languages->getReference (i)) == static_cast<int> (TipSoundLanguage::chuck)
+                                                                          ? TipSoundLanguage::chuck
+                                                                          : TipSoundLanguage::superCollider;
+            }
+            if (const auto* programs = item->getProperty ("tipSoundPrograms").getArray())
+            {
+                const auto count = juce::jmin (static_cast<int> (module.tipSoundPrograms.size()), programs->size());
+                for (int i = 0; i < count; ++i)
+                    module.tipSoundPrograms[static_cast<size_t> (i)] = programs->getReference (i).toString();
             }
 
             selectedId = module.id;

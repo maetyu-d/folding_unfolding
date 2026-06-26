@@ -58,6 +58,16 @@ bool FoldingModule::tipIsMuted (int tipIndex) const noexcept
     return pitchForTip (tipIndex) <= 0.0f;
 }
 
+TipSoundLanguage FoldingModule::soundLanguageForTip (int tipIndex) const noexcept
+{
+    return tipSoundLanguages[static_cast<size_t> (juce::jlimit (0, 7, tipIndex))];
+}
+
+const juce::String& FoldingModule::soundProgramForTip (int tipIndex) const noexcept
+{
+    return tipSoundPrograms[static_cast<size_t> (juce::jlimit (0, 7, tipIndex))];
+}
+
 float FoldingModule::randomPitchForTip (int tipIndex, juce::Random& random) const noexcept
 {
     const auto index = static_cast<size_t> (juce::jlimit (0, 7, tipIndex));
@@ -96,7 +106,38 @@ void FoldingModule::initialiseTipPitches() noexcept
         tipPitchRandomLow[i] = tipPitches[i];
         tipPitchRandomHigh[i] = tipPitches[i] + 7.0f;
         tipProbabilities[i] = 1.0f;
+        tipSoundLanguages[i] = TipSoundLanguage::superCollider;
+        tipSoundPrograms[i] = defaultTipSoundProgram (TipSoundLanguage::superCollider,
+                                                      static_cast<int> (i),
+                                                      sides);
     }
+}
+
+juce::String FoldingModule::defaultTipSoundProgram (TipSoundLanguage language, int tipIndex, int sides)
+{
+    if (language == TipSoundLanguage::chuck)
+    {
+        return "// Tip " + juce::String (juce::jlimit (0, 7, tipIndex) + 1) + " ChucK one-shot sketch\n"
+            "SinOsc osc => ADSR env => dac;\n"
+            "Std.mtof(hostPitch + (hostFold * 12.0)) => osc.freq;\n"
+            "env.set(4::ms, (80 + hostSustain * 420)::ms, 0.0, 120::ms);\n"
+            "hostAmp * hostVelocity => osc.gain;\n"
+            "env.keyOn();\n"
+            "(120 + hostSustain * 520)::ms => now;\n"
+            "env.keyOff();\n"
+            "160::ms => now;\n";
+    }
+
+    return "|out = 0, pitch = 60, amp = 0.32, sustain = 0.45, pan = 0, fold = 1, sides = "
+        + juce::String (juce::jlimit (3, 8, sides))
+        + ", tip = "
+        + juce::String (juce::jlimit (0, 7, tipIndex))
+        + ", velocity = 1|\n"
+          "var freq = (48 + (sides * 1.5) + (tip * 2) + (fold * 12)).midicps;\n"
+          "var env = EnvGen.kr(Env.perc(0.004, sustain.max(0.05), curve: -5), doneAction: 2);\n"
+          "var tone = SinOsc.ar(freq * [1, 2.01], 0, [0.82, 0.12]).sum;\n"
+          "tone = tone + (BPF.ar(WhiteNoise.ar(0.18), freq * (4 + fold), 0.18) * fold);\n"
+          "Out.ar(out, Pan2.ar(tone * env * amp * velocity, pan));";
 }
 
 std::vector<Vec3> FoldingModule::floorVertices() const

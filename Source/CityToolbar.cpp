@@ -18,6 +18,7 @@ juce::Colour inactiveButtonColour() { return wireframePalette ? juce::Colour (0x
 juce::Colour inkColour() { return wireframePalette ? juce::Colour (0xff02070b) : juce::Colour (0xff18241f); }
 
 void applyPitchEditorTheme (juce::TextEditor& editor);
+void applyProgramEditorTheme (juce::TextEditor& editor);
 
 juce::Colour colourForMode (CityToolbar::BuildMode mode)
 {
@@ -51,6 +52,29 @@ void applyPitchEditorTheme (juce::TextEditor& editor)
                       wireframePalette ? juce::Colour (0x8823f7ff) : juce::Colour (0x809db0a7));
     editor.setColour (juce::TextEditor::focusedOutlineColourId, accentColour());
     editor.setColour (juce::TextEditor::textColourId, textColour());
+}
+
+void configureProgramEditor (juce::TextEditor& editor)
+{
+    editor.setMultiLine (true);
+    editor.setReturnKeyStartsNewLine (true);
+    editor.setTabKeyUsedAsCharacter (true);
+    editor.setScrollbarsShown (true);
+    editor.setFont (juce::FontOptions (12.0f));
+    editor.setIndents (8, 6);
+    applyProgramEditorTheme (editor);
+}
+
+void applyProgramEditorTheme (juce::TextEditor& editor)
+{
+    editor.setColour (juce::TextEditor::backgroundColourId,
+                      wireframePalette ? juce::Colour (0xee02070b) : juce::Colours::white.withAlpha (0.72f));
+    editor.setColour (juce::TextEditor::outlineColourId,
+                      wireframePalette ? juce::Colour (0xaa23f7ff) : juce::Colour (0x809db0a7));
+    editor.setColour (juce::TextEditor::focusedOutlineColourId, accentColour());
+    editor.setColour (juce::TextEditor::textColourId, textColour());
+    editor.setColour (juce::TextEditor::highlightColourId, accentColour().withAlpha (0.32f));
+    editor.setColour (juce::TextEditor::highlightedTextColourId, textColour());
 }
 
 juce::Colour colourForMeter (int sides)
@@ -338,6 +362,50 @@ CityToolbar::CityToolbar()
     };
     addAndMakeVisible (switchRetriggerControl.label);
     addAndMakeVisible (switchRetriggerControl.combo);
+
+    tipSoundLanguageControl.label.setText ("Code", juce::dontSendNotification);
+    tipSoundLanguageControl.label.setJustificationType (juce::Justification::centredLeft);
+    tipSoundLanguageControl.label.setColour (juce::Label::textColourId, quietTextColour());
+    tipSoundLanguageControl.label.setFont (juce::FontOptions (12.0f, juce::Font::bold));
+    tipSoundLanguageControl.combo.addItem ("SC", 1);
+   #if UNFOLDING_HAS_WELD_CHUCK
+    tipSoundLanguageControl.combo.addItem ("ChucK", 2);
+   #endif
+    tipSoundLanguageControl.combo.setColour (juce::ComboBox::backgroundColourId, inactiveButtonColour());
+    tipSoundLanguageControl.combo.setColour (juce::ComboBox::outlineColourId, panelLineColour());
+    tipSoundLanguageControl.combo.setColour (juce::ComboBox::textColourId, textColour());
+    tipSoundLanguageControl.combo.setColour (juce::ComboBox::arrowColourId, accentColour());
+    tipSoundLanguageControl.combo.onChange = [this]
+    {
+        if (! suppressCallbacks && onTipSoundLanguageChanged)
+            onTipSoundLanguageChanged (activeTipIndex,
+                                      #if UNFOLDING_HAS_WELD_CHUCK
+                                       tipSoundLanguageControl.combo.getSelectedId() == 2
+                                           ? TipSoundLanguage::chuck
+                                           : TipSoundLanguage::superCollider
+                                      #else
+                                       TipSoundLanguage::superCollider
+                                      #endif
+            );
+    };
+    addAndMakeVisible (tipSoundLanguageControl.label);
+    addAndMakeVisible (tipSoundLanguageControl.combo);
+
+    tipProgramTitle.setText ("Tip program", juce::dontSendNotification);
+    tipProgramTitle.setJustificationType (juce::Justification::centredLeft);
+    tipProgramTitle.setColour (juce::Label::textColourId, quietTextColour());
+    tipProgramTitle.setFont (juce::FontOptions (12.0f, juce::Font::bold));
+    addAndMakeVisible (tipProgramTitle);
+
+    configureProgramEditor (tipProgramEditor);
+    addAndMakeVisible (tipProgramEditor);
+
+    tipProgramApplyButton.onClick = [this] { commitTipSoundProgram(); };
+    tipProgramApplyButton.setColour (juce::TextButton::buttonColourId, inactiveButtonColour());
+    tipProgramApplyButton.setColour (juce::TextButton::buttonOnColourId, activeButtonColour());
+    tipProgramApplyButton.setColour (juce::TextButton::textColourOffId, textColour());
+    tipProgramApplyButton.setColour (juce::TextButton::textColourOnId, inkColour());
+    addAndMakeVisible (tipProgramApplyButton);
 
     pitchListTitle.setText ("tip  note  R  low  high   p       tip  note  R  low  high   p", juce::dontSendNotification);
     pitchListTitle.setJustificationType (juce::Justification::centredLeft);
@@ -677,14 +745,28 @@ void CityToolbar::resized()
         rotationControl.slider.setBounds (rotationArea);
     }
 
-    if (activeTipSelected)
+    if (activeTipSelected && ! activeTipProgramMode)
     {
         auto pitchArea = takeRow (bounds, 34);
         tipPitchControl.label.setBounds (pitchArea.removeFromLeft (50));
         tipPitchControl.slider.setBounds (pitchArea);
     }
 
-    if (activePolygonSelected)
+    if (activePolygonSelected && activeTipProgramMode)
+    {
+        auto codeHeaderArea = takeRow (bounds, 34);
+        tipSoundLanguageControl.label.setBounds (codeHeaderArea.removeFromLeft (50));
+        tipSoundLanguageControl.combo.setBounds (codeHeaderArea.removeFromLeft (112));
+        codeHeaderArea.removeFromLeft (gap);
+        tipProgramApplyButton.setBounds (codeHeaderArea.removeFromRight (84));
+        codeHeaderArea.removeFromRight (gap);
+        tipProgramTitle.setBounds (codeHeaderArea);
+
+        const auto editorHeight = juce::jlimit (100, 230, bounds.getHeight() - 52);
+        tipProgramEditor.setBounds (bounds.removeFromTop (editorHeight));
+        bounds.removeFromTop (12);
+    }
+    else if (activePolygonSelected)
     {
         auto titleArea = bounds.removeFromTop (18);
         pitchListTitle.setBounds (titleArea);
@@ -756,6 +838,10 @@ void CityToolbar::setValues (int sides,
                              const std::array<float, 8>& tipRandomLow,
                              const std::array<float, 8>& tipRandomHigh,
                              const std::array<float, 8>& tipProbabilities,
+                             const std::array<TipSoundLanguage, 8>& tipSoundLanguages,
+                             const std::array<juce::String, 8>& tipSoundPrograms,
+                             int selectedTipIndex,
+                             bool tipProgramMode,
                              float tempoBpm,
                              bool playing,
                              bool switchSelected,
@@ -765,12 +851,17 @@ void CityToolbar::setValues (int sides,
                              bool colourWireframeMode)
 {
     const juce::ScopedValueSetter<bool> scopedSetter (suppressCallbacks, true);
+   #if ! UNFOLDING_HAS_WELD_CHUCK
+    juce::ignoreUnused (tipSoundLanguages);
+   #endif
 
     activeSwitchSelected = switchSelected;
     activeRotationControl = showRotationControl;
     activeTipSelected = tipSelected;
     activePolygonSelected = polygonSelected;
+    activeTipProgramMode = tipProgramMode;
     activeSides = juce::jlimit (3, 8, sides);
+    activeTipIndex = juce::jlimit (0, activeSides - 1, selectedTipIndex >= 0 ? selectedTipIndex : 0);
 
     if (wireframeTheme != colourWireframeMode)
     {
@@ -791,13 +882,27 @@ void CityToolbar::setValues (int sides,
     rotationControl.label.setVisible (activeRotationControl);
     rotationControl.slider.setVisible (activeRotationControl);
     tipPitchControl.slider.setValue (tipPitch, juce::dontSendNotification);
-    tipPitchControl.label.setVisible (activeTipSelected);
-    tipPitchControl.slider.setVisible (activeTipSelected);
-    pitchListTitle.setVisible (activePolygonSelected);
+    tipPitchControl.label.setVisible (activeTipSelected && ! activeTipProgramMode);
+    tipPitchControl.slider.setVisible (activeTipSelected && ! activeTipProgramMode);
+    pitchListTitle.setVisible (activePolygonSelected && ! activeTipProgramMode);
+    tipSoundLanguageControl.label.setVisible (activePolygonSelected && activeTipProgramMode);
+    tipSoundLanguageControl.combo.setVisible (activePolygonSelected && activeTipProgramMode);
+    tipProgramTitle.setVisible (activePolygonSelected && activeTipProgramMode);
+    tipProgramApplyButton.setVisible (activePolygonSelected && activeTipProgramMode);
+    tipProgramEditor.setVisible (activePolygonSelected && activeTipProgramMode);
+    tipSoundLanguageControl.combo.setSelectedId (
+       #if UNFOLDING_HAS_WELD_CHUCK
+                                                 tipSoundLanguages[static_cast<size_t> (activeTipIndex)] == TipSoundLanguage::chuck ? 2 : 1,
+       #else
+                                                 1,
+       #endif
+                                                 juce::dontSendNotification);
+    tipProgramTitle.setText ("Tip " + juce::String (activeTipIndex + 1) + " program", juce::dontSendNotification);
+    tipProgramEditor.setText (tipSoundPrograms[static_cast<size_t> (activeTipIndex)], false);
     for (size_t i = 0; i < tipPitchRows.size(); ++i)
     {
         auto& row = tipPitchRows[i];
-        const auto visible = activePolygonSelected && static_cast<int> (i) < activeSides;
+        const auto visible = activePolygonSelected && ! activeTipProgramMode && static_cast<int> (i) < activeSides;
         row.label.setVisible (visible);
         row.pitch.setVisible (visible);
         row.random.setVisible (visible);
@@ -880,7 +985,8 @@ void CityToolbar::applyTheme()
                          &tipPitchControl.label, &phaseControl.label, &tempoControl.label, &standsControl.label,
                          &diameterControl.label, &blockLevelsControl.label, &blockSizeControl.label,
                          &switchOffTimeControl.label, &rateControl.label, &switchActivationControl.label,
-                         &switchRetriggerControl.label, &pitchListTitle })
+                         &switchRetriggerControl.label, &tipSoundLanguageControl.label, &pitchListTitle,
+                         &tipProgramTitle })
     {
         label->setColour (juce::Label::textColourId, quietTextColour());
     }
@@ -901,7 +1007,8 @@ void CityToolbar::applyTheme()
         slider->setColour (juce::Slider::textBoxTextColourId, textColour());
     }
 
-    for (auto* combo : { &rateControl.combo, &switchActivationControl.combo, &switchRetriggerControl.combo })
+    for (auto* combo : { &rateControl.combo, &switchActivationControl.combo, &switchRetriggerControl.combo,
+                         &tipSoundLanguageControl.combo })
     {
         combo->setColour (juce::ComboBox::backgroundColourId, inactiveButtonColour());
         combo->setColour (juce::ComboBox::outlineColourId, panelLineColour());
@@ -919,7 +1026,8 @@ void CityToolbar::applyTheme()
                              wireframeTheme ? juce::Colour (0xff02070b) : juce::Colours::white.withAlpha (0.92f));
 
     for (auto* button : { &playButton, &pauseButton, &stopButton, &selectModeButton, &polygonModeButton,
-                          &platterModeButton, &blockModeButton, &plankModeButton, &cableModeButton })
+                          &platterModeButton, &blockModeButton, &plankModeButton, &cableModeButton,
+                          &tipProgramApplyButton })
         styleButton (*button);
 
     deleteButton.setColour (juce::TextButton::buttonColourId,
@@ -948,6 +1056,8 @@ void CityToolbar::applyTheme()
         applyPitchEditorTheme (row.high);
         applyPitchEditorTheme (row.probability);
     }
+
+    applyProgramEditorTheme (tipProgramEditor);
 
     selectSideButton (activeSides);
     repaint();
@@ -1057,12 +1167,17 @@ void CityToolbar::selectBuildMode (BuildMode toolMode, BuildMode controlsMode)
     switchOffTimeControl.slider.setVisible (showsSwitchControls);
     switchRetriggerControl.label.setVisible (showsSwitchControls);
     switchRetriggerControl.combo.setVisible (showsSwitchControls);
-    pitchListTitle.setVisible (activePolygonSelected);
+    pitchListTitle.setVisible (activePolygonSelected && ! activeTipProgramMode);
+    tipSoundLanguageControl.label.setVisible (activePolygonSelected && activeTipProgramMode);
+    tipSoundLanguageControl.combo.setVisible (activePolygonSelected && activeTipProgramMode);
+    tipProgramTitle.setVisible (activePolygonSelected && activeTipProgramMode);
+    tipProgramApplyButton.setVisible (activePolygonSelected && activeTipProgramMode);
+    tipProgramEditor.setVisible (activePolygonSelected && activeTipProgramMode);
 
     for (size_t i = 0; i < tipPitchRows.size(); ++i)
     {
         auto& row = tipPitchRows[i];
-        const auto visible = activePolygonSelected && static_cast<int> (i) < activeSides;
+        const auto visible = activePolygonSelected && ! activeTipProgramMode && static_cast<int> (i) < activeSides;
         row.label.setVisible (visible);
         row.pitch.setVisible (visible);
         row.random.setVisible (visible);
@@ -1111,6 +1226,14 @@ void CityToolbar::commitTipProbability (int tipIndex)
 
     const auto index = static_cast<size_t> (juce::jlimit (0, 7, tipIndex));
     onTipProbabilityChanged (tipIndex, juce::jlimit (0.0f, 1.0f, static_cast<float> (tipPitchRows[index].probability.getText().getFloatValue())));
+}
+
+void CityToolbar::commitTipSoundProgram()
+{
+    if (suppressCallbacks || ! activeTipProgramMode || onTipSoundProgramChanged == nullptr)
+        return;
+
+    onTipSoundProgramChanged (activeTipIndex, tipProgramEditor.getText());
 }
 
 float CityToolbar::pitchValueFromText (const juce::String& text)

@@ -3,9 +3,17 @@
 MainComponent::MainComponent()
 {
     addAndMakeVisible (cityComponent);
-    cityComponent.onCitySound = [this] (SonicEventType type, int sidesA, int sidesB, float foldA, float foldB, float pitchOverride)
+    cityComponent.onCitySound = [this] (SonicEventType type,
+                                        int sidesA,
+                                        int sidesB,
+                                        float foldA,
+                                        float foldB,
+                                        float pitchOverride,
+                                        TipSoundLanguage language,
+                                        const juce::String& program,
+                                        int tipIndex)
     {
-        triggerCitySound (type, sidesA, sidesB, foldA, foldB, pitchOverride);
+        triggerCitySound (type, sidesA, sidesB, foldA, foldB, pitchOverride, language, program, tipIndex);
     };
 
     setSize (1280, 800);
@@ -27,7 +35,7 @@ void MainComponent::resized()
 
 juce::StringArray MainComponent::getMenuBarNames()
 {
-    return { "File", "Edit", "View" };
+    return { "File", "Edit", "View", "Mode" };
 }
 
 juce::PopupMenu MainComponent::getMenuForIndex (int menuIndex, const juce::String& menuName)
@@ -53,11 +61,6 @@ juce::PopupMenu MainComponent::getMenuForIndex (int menuIndex, const juce::Strin
     }
     else if (menuName == "View")
     {
-        auto tickedText = [] (juce::String text, bool ticked)
-        {
-            return juce::String (ticked ? juce::String::fromUTF8 (u8"\u2713 ") : juce::String ("  ")) + text;
-        };
-
         const auto viewMode = cityComponent.currentViewMode();
         menu.addItem (isometricViewMenuItem,
                       tickedText ("Isometric View", viewMode == CityViewMode::isometric),
@@ -100,6 +103,19 @@ juce::PopupMenu MainComponent::getMenuForIndex (int menuIndex, const juce::Strin
                       true,
                       triggerTelemetryVisible);
     }
+    else if (menuName == "Mode")
+    {
+        const auto mode1 = audioMode == AudioMode::mode1Internal;
+        const auto mode2 = audioMode == AudioMode::mode2EmbeddedCode;
+        menu.addItem (audioMode1MenuItem,
+                      tickedText ("Mode 1 - Internal Synth", mode1),
+                      true,
+                      mode1);
+        menu.addItem (audioMode2MenuItem,
+                      tickedText ("Mode 2 - Embedded SC/ChucK Engine", mode2),
+                      true,
+                      mode2);
+    }
 
     return menu;
 }
@@ -137,31 +153,60 @@ void MainComponent::menuItemSelected (int menuItemID, int topLevelMenuIndex)
         case soundingNotesMenuItem:
             cityComponent.setSoundingNotesVisible (! cityComponent.areSoundingNotesVisible());
             break;
+        case audioMode1MenuItem:
+            setAudioMode (AudioMode::mode1Internal);
+            break;
+        case audioMode2MenuItem:
+            setAudioMode (AudioMode::mode2EmbeddedCode);
+            break;
         default: break;
     }
 
     menuItemsChanged();
 }
 
-void MainComponent::prepareToPlay (int, double sampleRate)
+void MainComponent::prepareToPlay (int samplesPerBlockExpected, double sampleRate)
 {
     collisionSynth.prepare (sampleRate);
+    mode2EmbeddedAudioEngine.prepare (sampleRate, samplesPerBlockExpected + 512, 2);
     cityComponent.armSoundTriggers();
 }
 
 void MainComponent::getNextAudioBlock (const juce::AudioSourceChannelInfo& bufferToFill)
 {
     bufferToFill.clearActiveBufferRegion();
-    collisionSynth.render (*bufferToFill.buffer, bufferToFill.startSample, bufferToFill.numSamples);
+
+    if (audioMode == AudioMode::mode2EmbeddedCode)
+        mode2EmbeddedAudioEngine.render (*bufferToFill.buffer, bufferToFill.startSample, bufferToFill.numSamples);
+    else
+        collisionSynth.render (*bufferToFill.buffer, bufferToFill.startSample, bufferToFill.numSamples);
 }
 
 void MainComponent::releaseResources()
 {
     collisionSynth.reset();
+    mode2EmbeddedAudioEngine.release();
 }
 
-void MainComponent::triggerCitySound (SonicEventType type, int sidesA, int sidesB, float foldA, float foldB, float pitchOverride)
+void MainComponent::triggerCitySound (SonicEventType type,
+                                      int sidesA,
+                                      int sidesB,
+                                      float foldA,
+                                      float foldB,
+                                      float pitchOverride,
+                                      TipSoundLanguage language,
+                                      const juce::String& program,
+                                      int tipIndex)
 {
+    if (audioMode == AudioMode::mode2EmbeddedCode)
+    {
+        mode2EmbeddedAudioEngine.setTransport (cityComponent.currentGlobalTempo(),
+                                               cityComponent.currentTransportTimeSeconds(),
+                                               cityComponent.isTransportPlaying());
+        mode2EmbeddedAudioEngine.triggerSound (type, sidesA, sidesB, foldA, foldB, pitchOverride, language, program, tipIndex);
+        return;
+    }
+
     collisionSynth.triggerSound (type, sidesA, sidesB, foldA, foldB, pitchOverride);
 }
 
@@ -233,4 +278,25 @@ void MainComponent::saveCity()
 void MainComponent::showFileError (const juce::String& title, const juce::String& message)
 {
     juce::AlertWindow::showMessageBoxAsync (juce::AlertWindow::WarningIcon, title, message);
+}
+
+void MainComponent::setAudioMode (AudioMode mode)
+{
+    if (audioMode == mode)
+        return;
+
+    audioMode = mode;
+    cityComponent.setMode2ProgramEditingEnabled (audioMode == AudioMode::mode2EmbeddedCode);
+
+    if (audioMode == AudioMode::mode1Internal)
+        mode2EmbeddedAudioEngine.reset();
+    else
+        collisionSynth.reset();
+
+    menuItemsChanged();
+}
+
+juce::String MainComponent::tickedText (juce::String text, bool ticked)
+{
+    return juce::String (ticked ? juce::String::fromUTF8 (u8"\u2713 ") : juce::String ("  ")) + text;
 }
