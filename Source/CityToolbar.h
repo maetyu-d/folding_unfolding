@@ -6,6 +6,8 @@
 
 #include <array>
 #include <functional>
+#include <utility>
+#include <vector>
 
 class CityToolbar final : public juce::Component,
                           private juce::Timer
@@ -95,6 +97,16 @@ public:
 private:
     class CodeEditorWindow;
 
+    enum class TipCodeStatus
+    {
+        unchanged,
+        compiled,
+        modified,
+        error,
+        muted,
+        defaultProgram
+    };
+
     struct LabeledSlider
     {
         juce::Label label;
@@ -139,7 +151,10 @@ private:
     void applyLargeTipProgramEditorText (const juce::String& text);
     void auditionLargeTipProgramEditorText (const juce::String& text);
     void resetLargeTipProgramEditorText();
+    void saveLargeTipProgramAsPreset (const juce::String& text);
     juce::String defaultProgramForActiveTip() const;
+    void setTipStatusFromMessage (int tipIndex, const juce::String& status);
+    juce::Colour colourForTipCodeStatus (TipCodeStatus status, int tipIndex, bool selected) const;
     void setTipProgramStatus (const juce::String& text, bool warning);
     void updateTipProgramMeta();
     void applyTheme();
@@ -188,6 +203,9 @@ private:
     juce::TextButton playButton { "Play" };
     juce::TextButton pauseButton { "Pause" };
     juce::TextButton stopButton { "Stop" };
+    juce::Label globalSectionLabel;
+    juce::Label buildSectionLabel;
+    juce::Label inspectorSectionLabel;
     juce::Label tempoValueBox;
     juce::Rectangle<int> beatLightBounds;
     float currentTempoBpm = 120.0f;
@@ -209,6 +227,8 @@ private:
     TipSoundLanguage activeTipSoundLanguage = TipSoundLanguage::superCollider;
     juce::String loadedTipProgram;
     juce::String lastAppliedTipProgram;
+    std::array<TipCodeStatus, 8> tipCodeStatuses {};
+    std::vector<std::pair<juce::String, juce::String>> customProgramPresets;
     BuildMode activeBuildMode = BuildMode::polygon;
     BuildMode currentBuildMode = BuildMode::polygon;
 };

@@ -14,6 +14,8 @@ juce::Colour panelColour() { return wireframePalette ? juce::Colour (0xc8060d14)
 juce::Colour panelLineColour() { return wireframePalette ? juce::Colour (0xbb00ffc8) : juce::Colour (0xb8ffffff); }
 juce::Colour textColour() { return wireframePalette ? juce::Colour (0xffeaffff) : juce::Colour (0xff263832); }
 juce::Colour quietTextColour() { return wireframePalette ? juce::Colour (0xff8cefe5) : juce::Colour (0xff65766f); }
+juce::Colour editorTextColour() { return wireframePalette ? juce::Colour (0xffffffff) : textColour(); }
+juce::Colour editorQuietTextColour() { return wireframePalette ? juce::Colour (0xffc7fff8) : quietTextColour(); }
 juce::Colour accentColour() { return wireframePalette ? juce::Colour (0xff23f7ff) : juce::Colour (0xff32c9b1); }
 juce::Colour activeButtonColour() { return wireframePalette ? juce::Colour (0xff39ff88) : juce::Colour (0xffffd766); }
 juce::Colour inactiveButtonColour() { return wireframePalette ? juce::Colour (0x3315f3ff) : juce::Colour (0xbaffffff); }
@@ -71,11 +73,13 @@ void configurePitchEditor (juce::TextEditor& editor)
 void applyPitchEditorTheme (juce::TextEditor& editor)
 {
     editor.setColour (juce::TextEditor::backgroundColourId,
-                      wireframePalette ? juce::Colour (0xbb03080e) : juce::Colours::white.withAlpha (0.70f));
+                      wireframePalette ? juce::Colour (0xff010307) : juce::Colours::white.withAlpha (0.70f));
     editor.setColour (juce::TextEditor::outlineColourId,
-                      wireframePalette ? juce::Colour (0x8823f7ff) : juce::Colour (0x809db0a7));
+                      wireframePalette ? juce::Colour (0xcc23f7ff) : juce::Colour (0x809db0a7));
     editor.setColour (juce::TextEditor::focusedOutlineColourId, accentColour());
-    editor.setColour (juce::TextEditor::textColourId, textColour());
+    editor.setColour (juce::TextEditor::textColourId, editorTextColour());
+    editor.setColour (juce::TextEditor::highlightColourId, activeButtonColour().withAlpha (0.34f));
+    editor.setColour (juce::TextEditor::highlightedTextColourId, editorTextColour());
 }
 
 void configureProgramEditor (juce::TextEditor& editor)
@@ -92,13 +96,13 @@ void configureProgramEditor (juce::TextEditor& editor)
 void applyProgramEditorTheme (juce::TextEditor& editor)
 {
     editor.setColour (juce::TextEditor::backgroundColourId,
-                      wireframePalette ? juce::Colour (0xee02070b) : juce::Colours::white.withAlpha (0.72f));
+                      wireframePalette ? juce::Colour (0xff010307) : juce::Colours::white.withAlpha (0.72f));
     editor.setColour (juce::TextEditor::outlineColourId,
-                      wireframePalette ? juce::Colour (0xaa23f7ff) : juce::Colour (0x809db0a7));
+                      wireframePalette ? juce::Colour (0xdd23f7ff) : juce::Colour (0x809db0a7));
     editor.setColour (juce::TextEditor::focusedOutlineColourId, accentColour());
-    editor.setColour (juce::TextEditor::textColourId, textColour());
-    editor.setColour (juce::TextEditor::highlightColourId, accentColour().withAlpha (0.32f));
-    editor.setColour (juce::TextEditor::highlightedTextColourId, textColour());
+    editor.setColour (juce::TextEditor::textColourId, editorTextColour());
+    editor.setColour (juce::TextEditor::highlightColourId, activeButtonColour().withAlpha (0.34f));
+    editor.setColour (juce::TextEditor::highlightedTextColourId, editorTextColour());
 }
 
 juce::Colour colourForMeter (int sides)
@@ -284,21 +288,18 @@ public:
             configureCodeEditor();
             addAndMakeVisible (editor);
 
-            presetBox.addItem ("Bell", 1);
-            presetBox.addItem ("Glass", 2);
-            presetBox.addItem ("Pluck", 3);
-            presetBox.addItem ("Pad", 4);
-            presetBox.addItem ("Bass", 5);
-            presetBox.addItem ("Noise Tick", 6);
-            presetBox.addItem ("FM Ping", 7);
-            presetBox.setTextWhenNothingSelected ("Presets");
             presetBox.setColour (juce::ComboBox::backgroundColourId, inactiveButtonColour());
             presetBox.setColour (juce::ComboBox::outlineColourId, panelLineColour());
             presetBox.setColour (juce::ComboBox::textColourId, textColour());
             presetBox.setColour (juce::ComboBox::arrowColourId, accentColour());
             presetBox.onChange = [this]
             {
-                const auto program = presetProgram (presetBox.getText());
+                auto program = presetProgram (presetBox.getText());
+                if (program.isEmpty())
+                    for (const auto& preset : owner.customProgramPresets)
+                        if (preset.first == presetBox.getText())
+                            program = preset.second;
+
                 if (program.isNotEmpty())
                 {
                     setTextFromToolbar (program);
@@ -306,9 +307,10 @@ public:
                     setStatus ("preset loaded + applied", false);
                 }
             };
+            refreshPresetList();
             addAndMakeVisible (presetBox);
 
-            for (auto* button : { &applyButton, &auditionButton, &defaultButton, &closeButton })
+            for (auto* button : { &applyButton, &auditionButton, &defaultButton, &savePresetButton, &closeButton })
             {
                 styleProgramButton (*button);
                 addAndMakeVisible (*button);
@@ -316,6 +318,7 @@ public:
 
             applyButton.onClick = [this] { owner.applyLargeTipProgramEditorText (document.getAllContent()); };
             auditionButton.onClick = [this] { owner.auditionLargeTipProgramEditorText (document.getAllContent()); };
+            savePresetButton.onClick = [this] { owner.saveLargeTipProgramAsPreset (document.getAllContent()); };
             defaultButton.onClick = [this]
             {
                 setTextFromToolbar (owner.defaultProgramForActiveTip());
@@ -358,6 +361,8 @@ public:
 
             closeButton.setBounds (top.removeFromRight (82));
             top.removeFromRight (8);
+            savePresetButton.setBounds (top.removeFromRight (112));
+            top.removeFromRight (8);
             defaultButton.setBounds (top.removeFromRight (94));
             top.removeFromRight (8);
             auditionButton.setBounds (top.removeFromRight (104));
@@ -388,6 +393,24 @@ public:
             setCodeStatus (statusLabel, status, warning);
         }
 
+        void refreshPresetList()
+        {
+            presetBox.clear (juce::dontSendNotification);
+            presetBox.addItem ("Bell", 1);
+            presetBox.addItem ("Glass", 2);
+            presetBox.addItem ("Pluck", 3);
+            presetBox.addItem ("Pad", 4);
+            presetBox.addItem ("Bass", 5);
+            presetBox.addItem ("Noise Tick", 6);
+            presetBox.addItem ("FM Ping", 7);
+
+            auto id = 100;
+            for (const auto& preset : owner.customProgramPresets)
+                presetBox.addItem (preset.first, id++);
+
+            presetBox.setTextWhenNothingSelected ("Presets");
+        }
+
     private:
         void configureCodeEditor()
         {
@@ -398,25 +421,25 @@ public:
             editor.setLineNumbersShown (true);
             editor.setScrollbarThickness (12);
             editor.setColour (juce::CodeEditorComponent::backgroundColourId,
-                              wireframePalette ? juce::Colour (0xff02070b) : juce::Colour (0xfffbfcf7));
-            editor.setColour (juce::CodeEditorComponent::highlightColourId, accentColour().withAlpha (0.30f));
-            editor.setColour (juce::CodeEditorComponent::defaultTextColourId, textColour());
+                              wireframePalette ? juce::Colour (0xff010307) : juce::Colour (0xfffbfcf7));
+            editor.setColour (juce::CodeEditorComponent::highlightColourId, activeButtonColour().withAlpha (0.34f));
+            editor.setColour (juce::CodeEditorComponent::defaultTextColourId, editorTextColour());
             editor.setColour (juce::CodeEditorComponent::lineNumberBackgroundId,
-                              wireframePalette ? juce::Colour (0xff050f16) : juce::Colour (0xffedf3ec));
-            editor.setColour (juce::CodeEditorComponent::lineNumberTextId, quietTextColour());
+                              wireframePalette ? juce::Colour (0xff030b12) : juce::Colour (0xffedf3ec));
+            editor.setColour (juce::CodeEditorComponent::lineNumberTextId, editorQuietTextColour());
 
             juce::CodeEditorComponent::ColourScheme scheme;
-            scheme.set ("Error", wireframePalette ? juce::Colour (0xffff5f8f) : juce::Colour (0xffc51b5a));
-            scheme.set ("Comment", wireframePalette ? juce::Colour (0xff38d67a) : juce::Colour (0xff4c8a62));
-            scheme.set ("Keyword", wireframePalette ? juce::Colour (0xffffd766) : juce::Colour (0xff8c55f6));
-            scheme.set ("Operator", wireframePalette ? juce::Colour (0xff23f7ff) : juce::Colour (0xff149e90));
-            scheme.set ("Identifier", textColour());
-            scheme.set ("Integer", wireframePalette ? juce::Colour (0xffff8fb1) : juce::Colour (0xffd65c5c));
-            scheme.set ("Float", wireframePalette ? juce::Colour (0xffff9f6e) : juce::Colour (0xffc8752a));
-            scheme.set ("String", wireframePalette ? juce::Colour (0xff75db8a) : juce::Colour (0xff2f8f5b));
-            scheme.set ("Bracket", wireframePalette ? juce::Colour (0xffc79bff) : juce::Colour (0xff5b63c7));
-            scheme.set ("Punctuation", wireframePalette ? juce::Colour (0xff64dfdf) : juce::Colour (0xff298d95));
-            scheme.set ("Preprocessor Text", wireframePalette ? juce::Colour (0xffffcf5f) : juce::Colour (0xffa4642e));
+            scheme.set ("Error", wireframePalette ? juce::Colour (0xffff7faa) : juce::Colour (0xffc51b5a));
+            scheme.set ("Comment", wireframePalette ? juce::Colour (0xff8dffb2) : juce::Colour (0xff4c8a62));
+            scheme.set ("Keyword", wireframePalette ? juce::Colour (0xffffe680) : juce::Colour (0xff8c55f6));
+            scheme.set ("Operator", wireframePalette ? juce::Colour (0xff6bffff) : juce::Colour (0xff149e90));
+            scheme.set ("Identifier", editorTextColour());
+            scheme.set ("Integer", wireframePalette ? juce::Colour (0xffffb2ca) : juce::Colour (0xffd65c5c));
+            scheme.set ("Float", wireframePalette ? juce::Colour (0xffffc18c) : juce::Colour (0xffc8752a));
+            scheme.set ("String", wireframePalette ? juce::Colour (0xffaaffbf) : juce::Colour (0xff2f8f5b));
+            scheme.set ("Bracket", wireframePalette ? juce::Colour (0xffdcbcff) : juce::Colour (0xff5b63c7));
+            scheme.set ("Punctuation", wireframePalette ? juce::Colour (0xffb7ffff) : juce::Colour (0xff298d95));
+            scheme.set ("Preprocessor Text", wireframePalette ? juce::Colour (0xffffe08a) : juce::Colour (0xffa4642e));
             editor.setColourScheme (scheme);
         }
 
@@ -450,6 +473,7 @@ public:
         juce::TextButton applyButton { "Apply" };
         juce::TextButton auditionButton { "Audition" };
         juce::TextButton defaultButton { "Default" };
+        juce::TextButton savePresetButton { "Save Preset" };
         juce::TextButton closeButton { "Close" };
         juce::Label statusLabel;
         juce::Label metaLabel;
@@ -496,6 +520,12 @@ public:
             content->setStatus (status, warning);
     }
 
+    void refreshPresetList()
+    {
+        if (content != nullptr)
+            content->refreshPresetList();
+    }
+
 private:
     CityToolbar& owner;
     Content* content = nullptr;
@@ -505,6 +535,18 @@ CityToolbar::~CityToolbar() = default;
 
 CityToolbar::CityToolbar()
 {
+    for (auto* label : { &globalSectionLabel, &buildSectionLabel, &inspectorSectionLabel })
+    {
+        label->setJustificationType (juce::Justification::centredLeft);
+        label->setFont (juce::FontOptions (11.5f, juce::Font::bold));
+        label->setColour (juce::Label::textColourId, quietTextColour());
+        addAndMakeVisible (*label);
+    }
+
+    globalSectionLabel.setText ("GLOBAL", juce::dontSendNotification);
+    buildSectionLabel.setText ("BUILD", juce::dontSendNotification);
+    inspectorSectionLabel.setText ("INSPECTOR", juce::dontSendNotification);
+
     selectModeButton.setButtonText ("Select");
     polygonModeButton.setButtonText ("Poly");
     platterModeButton.setButtonText ("Spin");
@@ -974,7 +1016,7 @@ CityToolbar::CityToolbar()
 void CityToolbar::paint (juce::Graphics& g)
 {
     auto bounds = getLocalBounds().toFloat().reduced (1.0f);
-    auto globalPanel = bounds.removeFromTop (96.0f);
+    auto globalPanel = bounds.removeFromTop (112.0f);
     paintPanel (g, globalPanel);
     bounds.removeFromTop (14.0f);
     paintPanel (g, bounds);
@@ -1013,9 +1055,10 @@ void CityToolbar::paint (juce::Graphics& g)
 void CityToolbar::resized()
 {
     auto bounds = getLocalBounds().reduced (16);
-    auto globalBounds = bounds.removeFromTop (68);
+    auto globalBounds = bounds.removeFromTop (84);
     bounds.removeFromTop (26);
 
+    globalSectionLabel.setBounds (globalBounds.removeFromTop (14));
     globalBounds.removeFromTop (4);
 
     auto transportArea = takeRow (globalBounds, 28);
@@ -1035,7 +1078,10 @@ void CityToolbar::resized()
     zoomControl.slider.setBounds (globalUtilityArea);
     globalUtilityArea.removeFromLeft (gap);
 
-    bounds.removeFromTop (8);
+    bounds.removeFromTop (2);
+    buildSectionLabel.setBounds (bounds.removeFromTop (16));
+    bounds.removeFromTop (4);
+
     auto buildArea = takeRow (bounds, 78);
     auto modeTop = buildArea.removeFromTop (34);
     buildArea.removeFromTop (gap);
@@ -1051,6 +1097,19 @@ void CityToolbar::resized()
     plankModeButton.setBounds (modeBottom.removeFromLeft (modeWidth));
     modeBottom.removeFromLeft (gap);
     cableModeButton.setBounds (modeBottom);
+
+    const auto inspectorVisible = activeBuildMode != BuildMode::select
+                                  || activePolygonSelected
+                                  || activeTipSelected
+                                  || activeSwitchSelected
+                                  || activeRotationControl;
+
+    inspectorSectionLabel.setVisible (inspectorVisible);
+    if (inspectorVisible)
+    {
+        inspectorSectionLabel.setBounds (bounds.removeFromTop (16));
+        bounds.removeFromTop (4);
+    }
 
     if (activeBuildMode == BuildMode::polygon)
     {
@@ -1318,15 +1377,42 @@ void CityToolbar::setValues (int sides,
         const auto visible = activePolygonSelected && activeTipProgramMode && static_cast<int> (i) < activeSides;
         auto& button = tipCodeMapButtons[i];
         const auto selected = static_cast<int> (i) == activeTipIndex;
-        const auto empty = tipSoundPrograms[i].trim().isEmpty();
+        const auto index = static_cast<size_t> (i);
+        const auto program = tipSoundPrograms[index].trim();
+        const auto muted = tipPitches[index] <= 0.0f
+                           && (! tipRandom[index] || (tipRandomLow[index] <= 0.0f && tipRandomHigh[index] <= 0.0f));
+        auto status = tipCodeStatuses[index];
+
+        if (muted)
+            status = TipCodeStatus::muted;
+        else if (selected && tipProgramDirty)
+            status = TipCodeStatus::modified;
+        else if (program.isEmpty()
+                 || program == FoldingModule::defaultTipSoundProgram (tipSoundLanguages[index],
+                                                                       static_cast<int> (i),
+                                                                       activeSides))
+            status = TipCodeStatus::defaultProgram;
+
+        juce::String suffix;
+        switch (status)
+        {
+            case TipCodeStatus::compiled: suffix = " ok"; break;
+            case TipCodeStatus::modified: suffix = " *"; break;
+            case TipCodeStatus::error: suffix = " !"; break;
+            case TipCodeStatus::muted: suffix = " x"; break;
+            case TipCodeStatus::defaultProgram: suffix = " d"; break;
+            case TipCodeStatus::unchanged: break;
+        }
+
         button.setVisible (visible);
         button.setToggleState (selected, juce::dontSendNotification);
-        button.setButtonText (juce::String (static_cast<int> (i) + 1) + (empty ? " -" : ""));
-        button.setColour (juce::TextButton::buttonColourId,
-                          selected ? colourForMeter (static_cast<int> (i) + 3)
-                                   : (empty ? inactiveButtonColour().withAlpha (0.45f)
-                                            : colourForMeter (static_cast<int> (i) + 3).withAlpha (0.34f)));
-        button.setColour (juce::TextButton::buttonOnColourId, colourForMeter (static_cast<int> (i) + 3));
+        button.setButtonText (juce::String (static_cast<int> (i) + 1) + suffix);
+        button.setColour (juce::TextButton::buttonColourId, colourForTipCodeStatus (status, static_cast<int> (i), selected));
+        button.setColour (juce::TextButton::buttonOnColourId, colourForTipCodeStatus (status, static_cast<int> (i), true));
+        button.setColour (juce::TextButton::textColourOffId,
+                          wireframeTheme || selected ? textColour() : inkColour());
+        button.setColour (juce::TextButton::textColourOnId,
+                          wireframeTheme ? textColour() : inkColour());
     }
     tipSoundLanguageControl.combo.setSelectedId (
        #if UNFOLDING_HAS_WELD_CHUCK
@@ -1375,8 +1461,8 @@ void CityToolbar::setValues (int sides,
         row.pitch.setEnabled (true);
         row.low.setEnabled (true);
         row.high.setEnabled (true);
-        row.low.setAlpha (tipRandom[i] ? 1.0f : (wireframeTheme ? 0.78f : 0.72f));
-        row.high.setAlpha (tipRandom[i] ? 1.0f : (wireframeTheme ? 0.78f : 0.72f));
+        row.low.setAlpha (tipRandom[i] ? 1.0f : (wireframeTheme ? 0.92f : 0.72f));
+        row.high.setAlpha (tipRandom[i] ? 1.0f : (wireframeTheme ? 0.92f : 0.72f));
         row.probability.setAlpha (1.0f);
     }
     phaseControl.slider.setValue (phaseDegrees, juce::dontSendNotification);
@@ -1439,7 +1525,8 @@ void CityToolbar::applyTheme()
                           wireframePalette ? textColour() : inkColour());
     };
 
-    for (auto* label : { &zoomControl.label, &radiusControl.label, &flapControl.label, &rotationControl.label,
+    for (auto* label : { &globalSectionLabel, &buildSectionLabel, &inspectorSectionLabel,
+                         &zoomControl.label, &radiusControl.label, &flapControl.label, &rotationControl.label,
                          &tipPitchControl.label, &phaseControl.label, &tempoControl.label, &standsControl.label,
                          &diameterControl.label, &blockLevelsControl.label, &blockSizeControl.label,
                          &switchOffTimeControl.label, &rateControl.label, &switchActivationControl.label,
@@ -1705,6 +1792,7 @@ void CityToolbar::commitTipSoundProgram()
     loadedTipProgram = program;
     tipProgramDirty = false;
     updateTipProgramMeta();
+    setTipStatusFromMessage (activeTipIndex, status);
     setTipProgramStatus (status, status.containsIgnoreCase ("error")
                                || status.containsIgnoreCase ("unavailable")
                                || status.containsIgnoreCase ("empty")
@@ -1717,6 +1805,7 @@ void CityToolbar::auditionTipSoundProgram()
         return;
 
     const auto status = onTipSoundProgramAudition (activeTipIndex, tipProgramEditor.getText());
+    setTipStatusFromMessage (activeTipIndex, status);
     setTipProgramStatus (status, status.containsIgnoreCase ("error")
                                || status.containsIgnoreCase ("unavailable")
                                || status.containsIgnoreCase ("empty")
@@ -1775,11 +1864,106 @@ void CityToolbar::resetLargeTipProgramEditorText()
     setTipProgramStatus ("default loaded - apply to save", false);
 }
 
+void CityToolbar::saveLargeTipProgramAsPreset (const juce::String& text)
+{
+    if (text.trim().isEmpty())
+    {
+        setTipProgramStatus ("empty preset ignored", true);
+        return;
+    }
+
+    auto* alert = new juce::AlertWindow ("Save preset",
+                                         "Name this snippet preset.",
+                                         juce::AlertWindow::NoIcon);
+    alert->addTextEditor ("name", "Preset " + juce::String (customProgramPresets.size() + 1), "Name");
+    alert->addButton ("Save", 1);
+    alert->addButton ("Cancel", 0);
+    alert->enterModalState (true,
+                            juce::ModalCallbackFunction::create ([this, alert, text] (int result)
+                            {
+                                std::unique_ptr<juce::AlertWindow> cleanup (alert);
+
+                                if (result != 1)
+                                    return;
+
+                                auto name = alert->getTextEditorContents ("name").trim();
+                                if (name.isEmpty())
+                                    name = "Preset " + juce::String (customProgramPresets.size() + 1);
+
+                                auto replaced = false;
+                                for (auto& preset : customProgramPresets)
+                                {
+                                    if (preset.first == name)
+                                    {
+                                        preset.second = text;
+                                        replaced = true;
+                                        break;
+                                    }
+                                }
+
+                                if (! replaced)
+                                    customProgramPresets.emplace_back (name, text);
+
+                                if (codeEditorWindow != nullptr)
+                                    codeEditorWindow->refreshPresetList();
+
+                                setTipProgramStatus (replaced ? "preset updated" : "preset saved", false);
+                            }),
+                            false);
+}
+
 juce::String CityToolbar::defaultProgramForActiveTip() const
 {
     return FoldingModule::defaultTipSoundProgram (activeTipSoundLanguage,
                                                   activeTipIndex,
                                                   activeSides);
+}
+
+void CityToolbar::setTipStatusFromMessage (int tipIndex, const juce::String& status)
+{
+    const auto index = static_cast<size_t> (juce::jlimit (0, 7, tipIndex));
+    const auto lowered = status.toLowerCase();
+
+    if (lowered.contains ("error")
+        || lowered.contains ("unavailable")
+        || lowered.contains ("empty")
+        || lowered.contains ("not ready")
+        || lowered.contains ("failed"))
+    {
+        tipCodeStatuses[index] = TipCodeStatus::error;
+    }
+    else if (lowered.contains ("compiled")
+             || lowered.contains ("audition")
+             || lowered.contains ("saved")
+             || lowered.contains ("ok")
+             || lowered.contains ("ready"))
+    {
+        tipCodeStatuses[index] = TipCodeStatus::compiled;
+    }
+    else
+    {
+        tipCodeStatuses[index] = TipCodeStatus::unchanged;
+    }
+}
+
+juce::Colour CityToolbar::colourForTipCodeStatus (TipCodeStatus status, int tipIndex, bool selected) const
+{
+    const auto base = colourForMeter (tipIndex + 3);
+    const auto alpha = selected ? (wireframeTheme ? 0.72f : 0.92f)
+                                : (wireframeTheme ? 0.25f : 0.44f);
+
+    switch (status)
+    {
+        case TipCodeStatus::compiled: return juce::Colour (0xff39ff88).withAlpha (selected ? 0.84f : alpha);
+        case TipCodeStatus::modified: return juce::Colour (0xffffd766).withAlpha (selected ? 0.92f : alpha);
+        case TipCodeStatus::error: return juce::Colour (0xffff5f8f).withAlpha (selected ? 0.90f : alpha);
+        case TipCodeStatus::muted: return quietTextColour().withAlpha (selected ? 0.46f : 0.24f);
+        case TipCodeStatus::defaultProgram: return base.withAlpha (selected ? (wireframeTheme ? 0.56f : 0.78f)
+                                                                            : (wireframeTheme ? 0.18f : 0.30f));
+        case TipCodeStatus::unchanged: break;
+    }
+
+    return base.withAlpha (alpha);
 }
 
 void CityToolbar::setTipProgramStatus (const juce::String& text, bool warning)
