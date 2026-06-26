@@ -87,6 +87,36 @@ int panColumnForEvent (int sidesA, int sidesB, float foldA, float foldB) noexcep
     const auto motion = juce::jlimit (-1.0f, 1.0f, (foldA - foldB) + shape * 0.12f);
     return juce::jlimit (0, 63, juce::roundToInt (31.5f + motion * 28.0f));
 }
+
+int parseLineNumberAfter (const juce::String& text, const juce::String& marker)
+{
+    const auto start = text.indexOfIgnoreCase (marker);
+    if (start < 0)
+        return -1;
+
+    auto index = start + marker.length();
+    while (index < text.length() && ! juce::CharacterFunctions::isDigit (text[index]))
+        ++index;
+
+    juce::String digits;
+    while (index < text.length() && juce::CharacterFunctions::isDigit (text[index]))
+        digits << text[index++];
+
+    return digits.isNotEmpty() ? digits.getIntValue() : -1;
+}
+
+juce::String withSnippetLineHint (juce::String error)
+{
+    auto line = parseLineNumberAfter (error, "line");
+
+    if (line < 0)
+        line = parseLineNumberAfter (error, ":");
+
+    if (line > 1)
+        return error + "  /  snippet line ~" + juce::String (juce::jmax (1, line - 1));
+
+    return error;
+}
 }
 
 void Mode2EmbeddedAudioEngine::prepare (double sampleRate, int maximumBlockSize, int outputChannels)
@@ -250,7 +280,7 @@ juce::String Mode2EmbeddedAudioEngine::validateProgram (TipSoundLanguage languag
         return "compiled";
 
     const auto error = embeddedSc.getLastError().trim();
-    return error.isNotEmpty() ? "error: " + error : "compile error";
+    return error.isNotEmpty() ? "error: " + withSnippetLineHint (error) : "compile error";
 }
 
 juce::String Mode2EmbeddedAudioEngine::synthForProgram (const juce::String& program)

@@ -2773,6 +2773,14 @@ void CityComponent::configureToolbar()
         setSelectedTipSoundLanguage (tipIndex, language);
     };
 
+    toolbar.onTipCodeTipSelected = [this] (int tipIndex)
+    {
+        grabKeyboardFocus();
+        selectedTipIndex = tipIndex;
+        syncToolbar();
+        repaint();
+    };
+
     toolbar.onTipSoundProgramChanged = [this] (int tipIndex, const juce::String& program) -> juce::String
     {
         setSelectedTipSoundProgram (tipIndex, program);

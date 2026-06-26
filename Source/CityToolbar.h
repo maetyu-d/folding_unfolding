@@ -73,6 +73,7 @@ public:
     std::function<void (int tipIndex, float low, float high)> onTipPitchRangeChanged;
     std::function<void (int tipIndex, float probability)> onTipProbabilityChanged;
     std::function<void (int tipIndex, TipSoundLanguage language)> onTipSoundLanguageChanged;
+    std::function<void (int tipIndex)> onTipCodeTipSelected;
     std::function<juce::String (int tipIndex, const juce::String& program)> onTipSoundProgramChanged;
     std::function<juce::String (int tipIndex, const juce::String& program)> onTipSoundProgramAudition;
     std::function<void (float rateDivision)> onRateDivisionChanged;
@@ -172,6 +173,7 @@ private:
     LabeledCombo tipSoundLanguageControl;
     juce::Label pitchListTitle;
     std::array<TipPitchRow, 8> tipPitchRows;
+    std::array<juce::TextButton, 8> tipCodeMapButtons;
     juce::Label tipProgramTitle;
     juce::TextEditor tipProgramEditor;
     juce::TextButton tipProgramApplyButton { "Apply" };
@@ -198,7 +200,9 @@ private:
     bool activePolygonSelected = false;
     bool activeTipProgramMode = false;
     bool tipProgramDirty = false;
+    bool clearConfirmationArmed = false;
     bool wireframeTheme = false;
+    double clearConfirmationDeadlineMs = 0.0;
     int activeSides = 6;
     int activeTipIndex = 0;
     int loadedProgramTipIndex = -1;

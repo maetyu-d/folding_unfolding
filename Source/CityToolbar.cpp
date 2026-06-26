@@ -124,6 +124,62 @@ struct RateOption
     float division = 1.0f;
 };
 
+juce::String presetProgram (const juce::String& name)
+{
+    if (name == "Bell")
+        return "|out = 0, pitch = 72, amp = 0.24, sustain = 1.4, pan = 0, fold = 1, tip = 0, velocity = 1|\n"
+               "var freq = (pitch + (fold * 7) + (tip * 2)).midicps;\n"
+               "var env = EnvGen.kr(Env.perc(0.003, sustain, curve: -6), doneAction: 2);\n"
+               "var sig = SinOsc.ar(freq * [1, 2.71, 4.09], 0, [0.8, 0.22, 0.09]).sum;\n"
+               "Out.ar(out, Pan2.ar(sig * env * amp * velocity, pan));";
+
+    if (name == "Glass")
+        return "|out = 0, pitch = 76, amp = 0.18, sustain = 1.8, pan = 0, fold = 1, sides = 6, velocity = 1|\n"
+               "var freq = (pitch + (sides * 0.7)).midicps;\n"
+               "var env = EnvGen.kr(Env.perc(0.001, sustain, curve: -8), doneAction: 2);\n"
+               "var sig = Ringz.ar(Impulse.ar(0), freq * [1, 1.503, 2.241, 3.77], [1.1, 0.8, 0.55, 0.4]).sum;\n"
+               "Out.ar(out, Pan2.ar(sig * env * amp * velocity, pan));";
+
+    if (name == "Pluck")
+        return "|out = 0, pitch = 60, amp = 0.26, sustain = 0.45, pan = 0, fold = 1, velocity = 1|\n"
+               "var freq = (pitch + (fold * 12)).midicps;\n"
+               "var env = EnvGen.kr(Env.perc(0.001, sustain, curve: -7), doneAction: 2);\n"
+               "var sig = Pluck.ar(WhiteNoise.ar(0.25), Impulse.kr(0), 1 / freq, 1 / freq, sustain, 0.45);\n"
+               "Out.ar(out, Pan2.ar(sig * env * amp * velocity, pan));";
+
+    if (name == "Pad")
+        return "|out = 0, pitch = 55, amp = 0.18, sustain = 2.8, pan = 0, fold = 1, velocity = 1|\n"
+               "var freq = pitch.midicps;\n"
+               "var env = EnvGen.kr(Env.linen(0.08, sustain, 0.8, curve: -3), doneAction: 2);\n"
+               "var sig = Mix(VarSaw.ar(freq * [0.5, 1, 1.005, 1.5], 0, [0.35, 0.45, 0.55, 0.4])) * 0.2;\n"
+               "sig = RLPF.ar(sig, (freq * (2 + fold * 8)).clip(180, 5200), 0.32);\n"
+               "Out.ar(out, Pan2.ar(sig * env * amp * velocity, pan));";
+
+    if (name == "Bass")
+        return "|out = 0, pitch = 40, amp = 0.32, sustain = 0.5, pan = 0, fold = 1, velocity = 1|\n"
+               "var freq = (pitch - 12).midicps;\n"
+               "var env = EnvGen.kr(Env.perc(0.006, sustain, curve: -4), doneAction: 2);\n"
+               "var sig = SinOsc.ar(freq) + (Saw.ar(freq * 2) * 0.18);\n"
+               "sig = LPF.ar(sig, 160 + (fold * 1400));\n"
+               "Out.ar(out, Pan2.ar(sig.softclip * env * amp * velocity, pan));";
+
+    if (name == "Noise Tick")
+        return "|out = 0, pitch = 84, amp = 0.18, sustain = 0.08, pan = 0, fold = 1, velocity = 1|\n"
+               "var env = EnvGen.kr(Env.perc(0.001, sustain, curve: -9), doneAction: 2);\n"
+               "var sig = BPF.ar(WhiteNoise.ar, pitch.midicps.clip(2000, 11000), 0.09);\n"
+               "Out.ar(out, Pan2.ar(sig * env * amp * velocity, pan));";
+
+    if (name == "FM Ping")
+        return "|out = 0, pitch = 67, amp = 0.20, sustain = 0.75, pan = 0, fold = 1, tip = 0, velocity = 1|\n"
+               "var freq = (pitch + tip).midicps;\n"
+               "var env = EnvGen.kr(Env.perc(0.002, sustain, curve: -6), doneAction: 2);\n"
+               "var mod = SinOsc.ar(freq * (2.01 + fold)) * freq * (1 + fold * 5);\n"
+               "var sig = SinOsc.ar(freq + mod);\n"
+               "Out.ar(out, Pan2.ar(sig * env * amp * velocity, pan));";
+
+    return {};
+}
+
 constexpr RateOption rateOptions[] = {
     { 1,  "4 bars",         0.25f },
     { 2,  "3 bars",         1.0f / 3.0f },
@@ -228,6 +284,30 @@ public:
             configureCodeEditor();
             addAndMakeVisible (editor);
 
+            presetBox.addItem ("Bell", 1);
+            presetBox.addItem ("Glass", 2);
+            presetBox.addItem ("Pluck", 3);
+            presetBox.addItem ("Pad", 4);
+            presetBox.addItem ("Bass", 5);
+            presetBox.addItem ("Noise Tick", 6);
+            presetBox.addItem ("FM Ping", 7);
+            presetBox.setTextWhenNothingSelected ("Presets");
+            presetBox.setColour (juce::ComboBox::backgroundColourId, inactiveButtonColour());
+            presetBox.setColour (juce::ComboBox::outlineColourId, panelLineColour());
+            presetBox.setColour (juce::ComboBox::textColourId, textColour());
+            presetBox.setColour (juce::ComboBox::arrowColourId, accentColour());
+            presetBox.onChange = [this]
+            {
+                const auto program = presetProgram (presetBox.getText());
+                if (program.isNotEmpty())
+                {
+                    setTextFromToolbar (program);
+                    owner.applyLargeTipProgramEditorText (program);
+                    setStatus ("preset loaded + applied", false);
+                }
+            };
+            addAndMakeVisible (presetBox);
+
             for (auto* button : { &applyButton, &auditionButton, &defaultButton, &closeButton })
             {
                 styleProgramButton (*button);
@@ -283,6 +363,8 @@ public:
             auditionButton.setBounds (top.removeFromRight (104));
             top.removeFromRight (8);
             applyButton.setBounds (top.removeFromRight (88));
+            top.removeFromRight (8);
+            presetBox.setBounds (top.removeFromRight (130));
 
             bounds.removeFromTop (10);
             auto status = bounds.removeFromTop (22);
@@ -364,6 +446,7 @@ public:
         juce::CodeDocument document;
         juce::CPlusPlusCodeTokeniser tokeniser;
         juce::CodeEditorComponent editor;
+        juce::ComboBox presetBox;
         juce::TextButton applyButton { "Apply" };
         juce::TextButton auditionButton { "Audition" };
         juce::TextButton defaultButton { "Default" };
@@ -488,7 +571,7 @@ CityToolbar::CityToolbar()
 
     configureSlider (radiusControl, "Sq", 1.0, 28.0, 1.0, "");
     configureSlider (flapControl, "F", 8.0, 110.0, 1.0, "");
-    configureSlider (zoomControl, "Zoom", 0.28, 3.2, 0.01, "x");
+    configureSlider (zoomControl, "View", 0.28, 3.2, 0.01, "x");
     configureSlider (rotationControl, "Rot", 0.0, 360.0, 1.0, juce::String::fromUTF8 (u8"\u00b0"));
     configureSlider (tipPitchControl, "Pitch", 0.0, 96.0, 1.0, "");
     tipPitchControl.slider.textFromValueFunction = [] (double value)
@@ -510,7 +593,7 @@ CityToolbar::CityToolbar()
     configureSlider (tempoControl, "BPM", 40.0, 240.0, 1.0, "");
     tempoControl.label.setVisible (false);
     tempoControl.slider.setVisible (false);
-    tempoValueBox.setText ("120", juce::dontSendNotification);
+    tempoValueBox.setText ("120 BPM", juce::dontSendNotification);
     tempoValueBox.setJustificationType (juce::Justification::centred);
     tempoValueBox.setEditable (true, true, false);
     tempoValueBox.setColour (juce::Label::backgroundColourId, juce::Colours::white.withAlpha (0.68f));
@@ -525,7 +608,7 @@ CityToolbar::CityToolbar()
             return;
 
         const auto bpm = juce::jlimit (40.0f, 240.0f, static_cast<float> (tempoValueBox.getText().getFloatValue()));
-        tempoValueBox.setText (juce::String (juce::roundToInt (bpm)), juce::dontSendNotification);
+        tempoValueBox.setText (juce::String (juce::roundToInt (bpm)) + " BPM", juce::dontSendNotification);
 
         if (onTempoChanged)
             onTempoChanged (bpm);
@@ -730,6 +813,23 @@ CityToolbar::CityToolbar()
         row.probability.onFocusLost = [this, tipIndex] { commitTipProbability (tipIndex); };
     }
 
+    for (size_t i = 0; i < tipCodeMapButtons.size(); ++i)
+    {
+        auto& button = tipCodeMapButtons[i];
+        const auto tipIndex = static_cast<int> (i);
+        button.setButtonText (juce::String (tipIndex + 1));
+        button.onClick = [this, tipIndex]
+        {
+            if (! suppressCallbacks && onTipCodeTipSelected)
+                onTipCodeTipSelected (tipIndex);
+        };
+        button.setColour (juce::TextButton::buttonColourId, inactiveButtonColour());
+        button.setColour (juce::TextButton::buttonOnColourId, activeButtonColour());
+        button.setColour (juce::TextButton::textColourOffId, textColour());
+        button.setColour (juce::TextButton::textColourOnId, inkColour());
+        addAndMakeVisible (button);
+    }
+
     radiusControl.slider.onValueChange = [this]
     {
         if (! suppressCallbacks && onRadiusChanged)
@@ -816,7 +916,24 @@ CityToolbar::CityToolbar()
 
     clearButton.onClick = [this]
     {
-        if (! suppressCallbacks && onClearRequested)
+        if (suppressCallbacks)
+            return;
+
+        const auto now = juce::Time::getMillisecondCounterHiRes();
+
+        if (! clearConfirmationArmed || now > clearConfirmationDeadlineMs)
+        {
+            clearConfirmationArmed = true;
+            clearConfirmationDeadlineMs = now + 2400.0;
+            clearButton.setButtonText ("Sure?");
+            repaint (clearButton.getBounds().expanded (4));
+            return;
+        }
+
+        clearConfirmationArmed = false;
+        clearButton.setButtonText ("Clear");
+
+        if (onClearRequested)
             onClearRequested();
     };
     clearButton.setButtonText ("Clear");
@@ -857,7 +974,7 @@ CityToolbar::CityToolbar()
 void CityToolbar::paint (juce::Graphics& g)
 {
     auto bounds = getLocalBounds().toFloat().reduced (1.0f);
-    auto globalPanel = bounds.removeFromTop (116.0f);
+    auto globalPanel = bounds.removeFromTop (96.0f);
     paintPanel (g, globalPanel);
     bounds.removeFromTop (14.0f);
     paintPanel (g, bounds);
@@ -896,30 +1013,29 @@ void CityToolbar::paint (juce::Graphics& g)
 void CityToolbar::resized()
 {
     auto bounds = getLocalBounds().reduced (16);
-    auto globalBounds = bounds.removeFromTop (84);
-    bounds.removeFromTop (48);
+    auto globalBounds = bounds.removeFromTop (68);
+    bounds.removeFromTop (26);
 
-    globalBounds.removeFromTop (14);
+    globalBounds.removeFromTop (4);
 
-    auto transportArea = takeRow (globalBounds, 32);
-    const auto transportButtonWidth = 64;
+    auto transportArea = takeRow (globalBounds, 28);
+    const auto transportButtonWidth = 62;
     playButton.setBounds (transportArea.removeFromLeft (transportButtonWidth));
-    transportArea.removeFromLeft (gap);
+    transportArea.removeFromLeft (4);
     pauseButton.setBounds (transportArea.removeFromLeft (transportButtonWidth));
-    transportArea.removeFromLeft (gap);
+    transportArea.removeFromLeft (4);
     stopButton.setBounds (transportArea.removeFromLeft (transportButtonWidth));
-    transportArea.removeFromLeft (gap);
-    beatLightBounds = transportArea.removeFromLeft (32).reduced (1);
-    transportArea.removeFromLeft (gap);
-    tempoValueBox.setBounds (transportArea.removeFromLeft (50));
+    transportArea.removeFromLeft (24);
+    beatLightBounds = transportArea.removeFromLeft (28).reduced (1);
+    transportArea.removeFromLeft (8);
+    tempoValueBox.setBounds (transportArea.removeFromLeft (92));
 
-    auto globalUtilityArea = takeRow (globalBounds, 32);
+    auto globalUtilityArea = takeRow (globalBounds, 26);
     zoomControl.label.setBounds (globalUtilityArea.removeFromLeft (52));
-    zoomControl.slider.setBounds (globalUtilityArea.removeFromLeft (juce::jmax (116, globalUtilityArea.getWidth() - 92)));
+    zoomControl.slider.setBounds (globalUtilityArea);
     globalUtilityArea.removeFromLeft (gap);
-    clearButton.setBounds (globalUtilityArea);
 
-    bounds.removeFromTop (14);
+    bounds.removeFromTop (8);
     auto buildArea = takeRow (bounds, 78);
     auto modeTop = buildArea.removeFromTop (34);
     buildArea.removeFromTop (gap);
@@ -1028,6 +1144,14 @@ void CityToolbar::resized()
 
     if (activePolygonSelected && activeTipProgramMode)
     {
+        auto tipMapArea = takeRow (bounds, 28);
+        const auto mapButtonWidth = (tipMapArea.getWidth() - gap * 7) / 8;
+        for (size_t i = 0; i < tipCodeMapButtons.size(); ++i)
+        {
+            tipCodeMapButtons[i].setBounds (tipMapArea.removeFromLeft (mapButtonWidth));
+            tipMapArea.removeFromLeft (gap);
+        }
+
         auto codeHeaderArea = takeRow (bounds, 34);
         tipSoundLanguageControl.label.setBounds (codeHeaderArea.removeFromLeft (50));
         tipSoundLanguageControl.combo.setBounds (codeHeaderArea.removeFromLeft (82));
@@ -1098,7 +1222,10 @@ void CityToolbar::resized()
 
     bounds.removeFromTop (2);
     auto utilityArea = takeRow (bounds, 34);
-    deleteButton.setBounds (utilityArea);
+    const auto destructiveButtonWidth = (utilityArea.getWidth() - gap) / 2;
+    deleteButton.setBounds (utilityArea.removeFromLeft (destructiveButtonWidth));
+    utilityArea.removeFromLeft (gap);
+    clearButton.setBounds (utilityArea);
 }
 
 void CityToolbar::setValues (int sides,
@@ -1140,6 +1267,12 @@ void CityToolbar::setValues (int sides,
     juce::ignoreUnused (tipSoundLanguages);
    #endif
 
+    if (clearConfirmationArmed && ! clearButton.isMouseButtonDown())
+    {
+        clearConfirmationArmed = false;
+        clearButton.setButtonText ("Clear");
+    }
+
     activeSwitchSelected = switchSelected;
     activeRotationControl = showRotationControl;
     activeTipSelected = tipSelected;
@@ -1180,6 +1313,21 @@ void CityToolbar::setValues (int sides,
     tipProgramStatusLabel.setVisible (activePolygonSelected && activeTipProgramMode);
     tipProgramMetaLabel.setVisible (activePolygonSelected && activeTipProgramMode);
     tipProgramEditor.setVisible (activePolygonSelected && activeTipProgramMode);
+    for (size_t i = 0; i < tipCodeMapButtons.size(); ++i)
+    {
+        const auto visible = activePolygonSelected && activeTipProgramMode && static_cast<int> (i) < activeSides;
+        auto& button = tipCodeMapButtons[i];
+        const auto selected = static_cast<int> (i) == activeTipIndex;
+        const auto empty = tipSoundPrograms[i].trim().isEmpty();
+        button.setVisible (visible);
+        button.setToggleState (selected, juce::dontSendNotification);
+        button.setButtonText (juce::String (static_cast<int> (i) + 1) + (empty ? " -" : ""));
+        button.setColour (juce::TextButton::buttonColourId,
+                          selected ? colourForMeter (static_cast<int> (i) + 3)
+                                   : (empty ? inactiveButtonColour().withAlpha (0.45f)
+                                            : colourForMeter (static_cast<int> (i) + 3).withAlpha (0.34f)));
+        button.setColour (juce::TextButton::buttonOnColourId, colourForMeter (static_cast<int> (i) + 3));
+    }
     tipSoundLanguageControl.combo.setSelectedId (
        #if UNFOLDING_HAS_WELD_CHUCK
                                                  tipSoundLanguages[static_cast<size_t> (activeTipIndex)] == TipSoundLanguage::chuck ? 2 : 1,
@@ -1239,7 +1387,7 @@ void CityToolbar::setValues (int sides,
     tempoControl.slider.setValue (tempoBpm, juce::dontSendNotification);
     currentTempoBpm = tempoBpm;
     transportPlaying = playing;
-    tempoValueBox.setText (juce::String (juce::roundToInt (tempoBpm)), juce::dontSendNotification);
+    tempoValueBox.setText (juce::String (juce::roundToInt (tempoBpm)) + " BPM", juce::dontSendNotification);
     playButton.setToggleState (playing, juce::dontSendNotification);
     pauseButton.setToggleState (! playing, juce::dontSendNotification);
     switchOffTimeControl.slider.setValue (switchOffDuration, juce::dontSendNotification);
@@ -1489,6 +1637,8 @@ void CityToolbar::selectBuildMode (BuildMode toolMode, BuildMode controlsMode)
     tipProgramStatusLabel.setVisible (activePolygonSelected && activeTipProgramMode);
     tipProgramMetaLabel.setVisible (activePolygonSelected && activeTipProgramMode);
     tipProgramEditor.setVisible (activePolygonSelected && activeTipProgramMode);
+    for (size_t i = 0; i < tipCodeMapButtons.size(); ++i)
+        tipCodeMapButtons[i].setVisible (activePolygonSelected && activeTipProgramMode && static_cast<int> (i) < activeSides);
 
     for (size_t i = 0; i < tipPitchRows.size(); ++i)
     {
@@ -1722,6 +1872,13 @@ float CityToolbar::selectedRateDivision() const
 
 void CityToolbar::timerCallback()
 {
+    if (clearConfirmationArmed && juce::Time::getMillisecondCounterHiRes() > clearConfirmationDeadlineMs)
+    {
+        clearConfirmationArmed = false;
+        clearButton.setButtonText ("Clear");
+        repaint (clearButton.getBounds().expanded (4));
+    }
+
     if (! beatLightBounds.isEmpty())
         repaint (beatLightBounds.expanded (8));
 }
