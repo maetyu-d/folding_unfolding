@@ -229,6 +229,30 @@ juce::String Mode2EmbeddedAudioEngine::getStatusText() const
                            : "Embedded SC fallback: " + embeddedSc.getLastError();
 }
 
+juce::String Mode2EmbeddedAudioEngine::validateProgram (TipSoundLanguage language, const juce::String& program)
+{
+    if (program.trim().isEmpty())
+        return "empty program";
+
+    if (language == TipSoundLanguage::chuck)
+    {
+       #if UNFOLDING_HAS_WELD_CHUCK
+        return "ChucK ready";
+       #else
+        return "ChucK unavailable in this build";
+       #endif
+    }
+
+    if (! embeddedScReady)
+        return "SC not ready";
+
+    if (synthForProgram (program).isNotEmpty())
+        return "compiled";
+
+    const auto error = embeddedSc.getLastError().trim();
+    return error.isNotEmpty() ? "error: " + error : "compile error";
+}
+
 juce::String Mode2EmbeddedAudioEngine::synthForProgram (const juce::String& program)
 {
     const auto trimmed = program.trim();

@@ -33,6 +33,7 @@ public:
 
     bool isReady() const noexcept;
     juce::String getStatusText() const;
+    juce::String validateProgram (TipSoundLanguage language, const juce::String& program);
 
 private:
     struct RenderedVoice

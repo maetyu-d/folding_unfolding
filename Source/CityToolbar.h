@@ -22,6 +22,7 @@ public:
     };
 
     CityToolbar();
+    ~CityToolbar() override;
 
     void paint (juce::Graphics& g) override;
     void resized() override;
@@ -72,7 +73,8 @@ public:
     std::function<void (int tipIndex, float low, float high)> onTipPitchRangeChanged;
     std::function<void (int tipIndex, float probability)> onTipProbabilityChanged;
     std::function<void (int tipIndex, TipSoundLanguage language)> onTipSoundLanguageChanged;
-    std::function<void (int tipIndex, const juce::String& program)> onTipSoundProgramChanged;
+    std::function<juce::String (int tipIndex, const juce::String& program)> onTipSoundProgramChanged;
+    std::function<juce::String (int tipIndex, const juce::String& program)> onTipSoundProgramAudition;
     std::function<void (float rateDivision)> onRateDivisionChanged;
     std::function<void (float phaseDegrees)> onPhaseChanged;
     std::function<void (float tempoBpm)> onTempoChanged;
@@ -90,6 +92,8 @@ public:
     std::function<void()> onClearRequested;
 
 private:
+    class CodeEditorWindow;
+
     struct LabeledSlider
     {
         juce::Label label;
@@ -128,6 +132,15 @@ private:
     void commitTipPitchRange (int tipIndex);
     void commitTipProbability (int tipIndex);
     void commitTipSoundProgram();
+    void auditionTipSoundProgram();
+    void resetTipSoundProgram();
+    void openLargeTipProgramEditor();
+    void applyLargeTipProgramEditorText (const juce::String& text);
+    void auditionLargeTipProgramEditorText (const juce::String& text);
+    void resetLargeTipProgramEditorText();
+    juce::String defaultProgramForActiveTip() const;
+    void setTipProgramStatus (const juce::String& text, bool warning);
+    void updateTipProgramMeta();
     void applyTheme();
     static float pitchValueFromText (const juce::String& text);
     static juce::String pitchTextForValue (float value);
@@ -162,6 +175,12 @@ private:
     juce::Label tipProgramTitle;
     juce::TextEditor tipProgramEditor;
     juce::TextButton tipProgramApplyButton { "Apply" };
+    juce::TextButton tipProgramAuditionButton { "Audition" };
+    juce::TextButton tipProgramResetButton { "Reset" };
+    juce::TextButton tipProgramOpenButton { "Open" };
+    juce::Label tipProgramStatusLabel;
+    juce::Label tipProgramMetaLabel;
+    std::unique_ptr<CodeEditorWindow> codeEditorWindow;
     juce::TextButton deleteButton { "Delete" };
     juce::TextButton clearButton { "Clear" };
     juce::TextButton playButton { "Play" };
@@ -178,9 +197,14 @@ private:
     bool activeTipSelected = false;
     bool activePolygonSelected = false;
     bool activeTipProgramMode = false;
+    bool tipProgramDirty = false;
     bool wireframeTheme = false;
     int activeSides = 6;
     int activeTipIndex = 0;
+    int loadedProgramTipIndex = -1;
+    TipSoundLanguage activeTipSoundLanguage = TipSoundLanguage::superCollider;
+    juce::String loadedTipProgram;
+    juce::String lastAppliedTipProgram;
     BuildMode activeBuildMode = BuildMode::polygon;
     BuildMode currentBuildMode = BuildMode::polygon;
 };

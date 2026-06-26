@@ -72,6 +72,13 @@ public:
                         TipSoundLanguage language,
                         const juce::String& program,
                         int tipIndex)> onCitySound;
+    std::function<juce::String (TipSoundLanguage language,
+                                const juce::String& program,
+                                int sides,
+                                int tipIndex,
+                                float fold,
+                                float pitch,
+                                bool audition)> onTipProgramPreview;
 
 private:
     enum class DragMode
@@ -129,6 +136,7 @@ private:
     void setSelectedTipProbability (int tipIndex, float probability);
     void setSelectedTipSoundLanguage (int tipIndex, TipSoundLanguage language);
     void setSelectedTipSoundProgram (int tipIndex, const juce::String& program);
+    juce::String previewSelectedTipSoundProgram (int tipIndex, const juce::String& program, bool audition);
     void setBuildMode (CityToolbar::BuildMode mode);
     void setSelectedOrDefaultPlatterStands (int stands);
     void setSelectedOrDefaultPlatterDiameter (float diameter);

@@ -2773,9 +2773,15 @@ void CityComponent::configureToolbar()
         setSelectedTipSoundLanguage (tipIndex, language);
     };
 
-    toolbar.onTipSoundProgramChanged = [this] (int tipIndex, const juce::String& program)
+    toolbar.onTipSoundProgramChanged = [this] (int tipIndex, const juce::String& program) -> juce::String
     {
         setSelectedTipSoundProgram (tipIndex, program);
+        return previewSelectedTipSoundProgram (tipIndex, program, false);
+    };
+
+    toolbar.onTipSoundProgramAudition = [this] (int tipIndex, const juce::String& program) -> juce::String
+    {
+        return previewSelectedTipSoundProgram (tipIndex, program, true);
     };
 
     toolbar.onRateDivisionChanged = [this] (float rateDivision)
@@ -3442,6 +3448,40 @@ void CityComponent::setSelectedTipSoundProgram (int tipIndex, const juce::String
 
     syncToolbar();
     repaint();
+}
+
+juce::String CityComponent::previewSelectedTipSoundProgram (int tipIndex, const juce::String& program, bool audition)
+{
+    TipSoundLanguage language = TipSoundLanguage::superCollider;
+    auto sides = 6;
+    auto fold = 1.0f;
+    auto pitch = 60.0f;
+    auto found = false;
+
+    {
+        const juce::ScopedLock lock (modelLock);
+
+        if (selectedKind == CityObjectKind::module && tipIndex >= 0)
+            if (auto* selected = city.findModule (selectedId))
+            {
+                const auto index = juce::jlimit (0, selected->sides - 1, tipIndex);
+                language = selected->soundLanguageForTip (index);
+                sides = selected->sides;
+                fold = selected->foldAt (transportTimeSeconds, globalTempoBpm);
+                pitch = selected->pitchForTip (index);
+                if (pitch <= 0.0f)
+                    pitch = 60.0f;
+                found = true;
+            }
+    }
+
+    if (! found)
+        return "no selected tip";
+
+    if (onTipProgramPreview == nullptr)
+        return "Mode 2 not ready";
+
+    return onTipProgramPreview (language, program, sides, tipIndex, fold, pitch, audition);
 }
 
 void CityComponent::setBuildMode (CityToolbar::BuildMode mode)

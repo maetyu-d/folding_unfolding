@@ -15,6 +15,16 @@ MainComponent::MainComponent()
     {
         triggerCitySound (type, sidesA, sidesB, foldA, foldB, pitchOverride, language, program, tipIndex);
     };
+    cityComponent.onTipProgramPreview = [this] (TipSoundLanguage language,
+                                                const juce::String& program,
+                                                int sides,
+                                                int tipIndex,
+                                                float fold,
+                                                float pitch,
+                                                bool audition)
+    {
+        return previewTipProgram (language, program, sides, tipIndex, fold, pitch, audition);
+    };
 
     setSize (1280, 800);
     setAudioChannels (0, 2);
@@ -294,6 +304,44 @@ void MainComponent::setAudioMode (AudioMode mode)
         collisionSynth.reset();
 
     menuItemsChanged();
+}
+
+juce::String MainComponent::previewTipProgram (TipSoundLanguage language,
+                                               const juce::String& program,
+                                               int sides,
+                                               int tipIndex,
+                                               float fold,
+                                               float pitch,
+                                               bool audition)
+{
+    if (audioMode != AudioMode::mode2EmbeddedCode)
+        return "select Mode 2";
+
+    mode2EmbeddedAudioEngine.setTransport (cityComponent.currentGlobalTempo(),
+                                           cityComponent.currentTransportTimeSeconds(),
+                                           cityComponent.isTransportPlaying());
+
+    const auto status = mode2EmbeddedAudioEngine.validateProgram (language, program);
+    const auto failed = status.containsIgnoreCase ("error")
+                        || status.containsIgnoreCase ("unavailable")
+                        || status.containsIgnoreCase ("empty")
+                        || status.containsIgnoreCase ("not ready");
+
+    if (audition && ! failed)
+    {
+        mode2EmbeddedAudioEngine.triggerSound (SonicEventType::tipTrigger,
+                                               sides,
+                                               sides,
+                                               fold,
+                                               0.5f,
+                                               pitch,
+                                               language,
+                                               program,
+                                               tipIndex);
+        return "audition: " + status;
+    }
+
+    return status;
 }
 
 juce::String MainComponent::tickedText (juce::String text, bool ticked)

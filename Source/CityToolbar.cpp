@@ -1,5 +1,7 @@
 #include "CityToolbar.h"
 
+#include "FoldingModule.h"
+
 #include <cmath>
 
 namespace
@@ -19,6 +21,28 @@ juce::Colour inkColour() { return wireframePalette ? juce::Colour (0xff02070b) :
 
 void applyPitchEditorTheme (juce::TextEditor& editor);
 void applyProgramEditorTheme (juce::TextEditor& editor);
+void styleProgramButton (juce::TextButton& button)
+{
+    button.setColour (juce::TextButton::buttonColourId, inactiveButtonColour());
+    button.setColour (juce::TextButton::buttonOnColourId,
+                      wireframePalette ? activeButtonColour().withAlpha (0.78f) : activeButtonColour());
+    button.setColour (juce::TextButton::textColourOffId, textColour());
+    button.setColour (juce::TextButton::textColourOnId,
+                      wireframePalette ? textColour() : inkColour());
+}
+
+void setCodeStatus (juce::Label& label, const juce::String& text, bool warning)
+{
+    auto status = text.isNotEmpty() ? text : juce::String ("no status");
+    status = status.replaceCharacters ("\n\r", "  ").trim();
+
+    if (status.length() > 96)
+        status = status.substring (0, 93) + "...";
+
+    label.setText (status, juce::dontSendNotification);
+    label.setColour (juce::Label::textColourId,
+                     warning ? juce::Colour (0xffff8fb1) : quietTextColour());
+}
 
 juce::Colour colourForMode (CityToolbar::BuildMode mode)
 {
@@ -187,6 +211,214 @@ const RateOption& closestRateOption (const RateOption (&options)[size], float di
     return *best;
 }
 }
+
+class CityToolbar::CodeEditorWindow final : public juce::DocumentWindow
+{
+public:
+    class Content final : public juce::Component,
+                          private juce::CodeDocument::Listener
+    {
+    public:
+        Content (CityToolbar& ownerIn, juce::String initialText)
+            : owner (ownerIn),
+              editor (document, &tokeniser)
+        {
+            document.replaceAllContent (initialText);
+            document.addListener (this);
+            configureCodeEditor();
+            addAndMakeVisible (editor);
+
+            for (auto* button : { &applyButton, &auditionButton, &defaultButton, &closeButton })
+            {
+                styleProgramButton (*button);
+                addAndMakeVisible (*button);
+            }
+
+            applyButton.onClick = [this] { owner.applyLargeTipProgramEditorText (document.getAllContent()); };
+            auditionButton.onClick = [this] { owner.auditionLargeTipProgramEditorText (document.getAllContent()); };
+            defaultButton.onClick = [this]
+            {
+                setTextFromToolbar (owner.defaultProgramForActiveTip());
+                owner.resetLargeTipProgramEditorText();
+            };
+            closeButton.onClick = [this]
+            {
+                if (auto* window = findParentComponentOfClass<CodeEditorWindow>())
+                    window->closeButtonPressed();
+            };
+
+            statusLabel.setFont (juce::FontOptions (13.0f, juce::Font::bold));
+            statusLabel.setJustificationType (juce::Justification::centredLeft);
+            statusLabel.setColour (juce::Label::textColourId, quietTextColour());
+            addAndMakeVisible (statusLabel);
+
+            metaLabel.setFont (juce::FontOptions (13.0f, juce::Font::bold));
+            metaLabel.setJustificationType (juce::Justification::centredRight);
+            metaLabel.setColour (juce::Label::textColourId, quietTextColour());
+            addAndMakeVisible (metaLabel);
+
+            setStatus ("ready", false);
+            updateMeta();
+        }
+
+        ~Content() override
+        {
+            document.removeListener (this);
+        }
+
+        void paint (juce::Graphics& g) override
+        {
+            g.fillAll (wireframePalette ? juce::Colour (0xff02070b) : juce::Colour (0xfff8fbf1));
+        }
+
+        void resized() override
+        {
+            auto bounds = getLocalBounds().reduced (18);
+            auto top = bounds.removeFromTop (38);
+
+            closeButton.setBounds (top.removeFromRight (82));
+            top.removeFromRight (8);
+            defaultButton.setBounds (top.removeFromRight (94));
+            top.removeFromRight (8);
+            auditionButton.setBounds (top.removeFromRight (104));
+            top.removeFromRight (8);
+            applyButton.setBounds (top.removeFromRight (88));
+
+            bounds.removeFromTop (10);
+            auto status = bounds.removeFromTop (22);
+            metaLabel.setBounds (status.removeFromRight (210));
+            statusLabel.setBounds (status);
+            bounds.removeFromTop (10);
+            editor.setBounds (bounds);
+        }
+
+        void setTextFromToolbar (const juce::String& text)
+        {
+            const juce::ScopedValueSetter<bool> setter (updatingDocument, true);
+            document.replaceAllContent (text);
+            document.clearUndoHistory();
+            document.setSavePoint();
+            updateMeta();
+        }
+
+        void setStatus (const juce::String& status, bool warning)
+        {
+            setCodeStatus (statusLabel, status, warning);
+        }
+
+    private:
+        void configureCodeEditor()
+        {
+            juce::Font font (juce::FontOptions (15.0f));
+            font.setTypefaceName (juce::Font::getDefaultMonospacedFontName());
+            editor.setFont (font);
+            editor.setTabSize (4, true);
+            editor.setLineNumbersShown (true);
+            editor.setScrollbarThickness (12);
+            editor.setColour (juce::CodeEditorComponent::backgroundColourId,
+                              wireframePalette ? juce::Colour (0xff02070b) : juce::Colour (0xfffbfcf7));
+            editor.setColour (juce::CodeEditorComponent::highlightColourId, accentColour().withAlpha (0.30f));
+            editor.setColour (juce::CodeEditorComponent::defaultTextColourId, textColour());
+            editor.setColour (juce::CodeEditorComponent::lineNumberBackgroundId,
+                              wireframePalette ? juce::Colour (0xff050f16) : juce::Colour (0xffedf3ec));
+            editor.setColour (juce::CodeEditorComponent::lineNumberTextId, quietTextColour());
+
+            juce::CodeEditorComponent::ColourScheme scheme;
+            scheme.set ("Error", wireframePalette ? juce::Colour (0xffff5f8f) : juce::Colour (0xffc51b5a));
+            scheme.set ("Comment", wireframePalette ? juce::Colour (0xff38d67a) : juce::Colour (0xff4c8a62));
+            scheme.set ("Keyword", wireframePalette ? juce::Colour (0xffffd766) : juce::Colour (0xff8c55f6));
+            scheme.set ("Operator", wireframePalette ? juce::Colour (0xff23f7ff) : juce::Colour (0xff149e90));
+            scheme.set ("Identifier", textColour());
+            scheme.set ("Integer", wireframePalette ? juce::Colour (0xffff8fb1) : juce::Colour (0xffd65c5c));
+            scheme.set ("Float", wireframePalette ? juce::Colour (0xffff9f6e) : juce::Colour (0xffc8752a));
+            scheme.set ("String", wireframePalette ? juce::Colour (0xff75db8a) : juce::Colour (0xff2f8f5b));
+            scheme.set ("Bracket", wireframePalette ? juce::Colour (0xffc79bff) : juce::Colour (0xff5b63c7));
+            scheme.set ("Punctuation", wireframePalette ? juce::Colour (0xff64dfdf) : juce::Colour (0xff298d95));
+            scheme.set ("Preprocessor Text", wireframePalette ? juce::Colour (0xffffcf5f) : juce::Colour (0xffa4642e));
+            editor.setColourScheme (scheme);
+        }
+
+        void codeDocumentTextInserted (const juce::String&, int) override
+        {
+            if (! updatingDocument)
+                updateMeta();
+        }
+
+        void codeDocumentTextDeleted (int, int) override
+        {
+            if (! updatingDocument)
+                updateMeta();
+        }
+
+        void updateMeta()
+        {
+            const auto lines = document.getNumLines();
+            metaLabel.setText (juce::String (lines)
+                                   + juce::String (lines == 1 ? " line  /  " : " lines  /  ")
+                                   + juce::String (document.getNumCharacters())
+                                   + " chars",
+                               juce::dontSendNotification);
+        }
+
+        CityToolbar& owner;
+        juce::CodeDocument document;
+        juce::CPlusPlusCodeTokeniser tokeniser;
+        juce::CodeEditorComponent editor;
+        juce::TextButton applyButton { "Apply" };
+        juce::TextButton auditionButton { "Audition" };
+        juce::TextButton defaultButton { "Default" };
+        juce::TextButton closeButton { "Close" };
+        juce::Label statusLabel;
+        juce::Label metaLabel;
+        bool updatingDocument = false;
+    };
+
+    CodeEditorWindow (CityToolbar& ownerIn, juce::String title, juce::String initialText, bool wireframe)
+        : DocumentWindow (std::move (title),
+                          wireframe ? juce::Colour (0xff02070b) : juce::Colour (0xfff8fbf1),
+                          DocumentWindow::closeButton),
+          owner (ownerIn)
+    {
+        wireframePalette = wireframe;
+        setUsingNativeTitleBar (true);
+        setResizable (true, true);
+        content = new Content (owner, std::move (initialText));
+        setContentOwned (content, false);
+        centreWithSize (760, 560);
+        setVisible (true);
+    }
+
+    ~CodeEditorWindow() override
+    {
+        clearContentComponent();
+    }
+
+    void closeButtonPressed() override
+    {
+        owner.codeEditorWindow.reset();
+    }
+
+    void syncFromToolbar (const juce::String& title, const juce::String& text, bool wireframe)
+    {
+        wireframePalette = wireframe;
+        setName (title);
+
+        if (content != nullptr)
+            content->setTextFromToolbar (text);
+    }
+
+    void setStatus (const juce::String& status, bool warning)
+    {
+        if (content != nullptr)
+            content->setStatus (status, warning);
+    }
+
+private:
+    CityToolbar& owner;
+    Content* content = nullptr;
+};
+
+CityToolbar::~CityToolbar() = default;
 
 CityToolbar::CityToolbar()
 {
@@ -398,6 +630,14 @@ CityToolbar::CityToolbar()
     addAndMakeVisible (tipProgramTitle);
 
     configureProgramEditor (tipProgramEditor);
+    tipProgramEditor.onTextChange = [this]
+    {
+        if (! suppressCallbacks)
+        {
+            tipProgramDirty = tipProgramEditor.getText() != lastAppliedTipProgram;
+            updateTipProgramMeta();
+        }
+    };
     addAndMakeVisible (tipProgramEditor);
 
     tipProgramApplyButton.onClick = [this] { commitTipSoundProgram(); };
@@ -406,6 +646,40 @@ CityToolbar::CityToolbar()
     tipProgramApplyButton.setColour (juce::TextButton::textColourOffId, textColour());
     tipProgramApplyButton.setColour (juce::TextButton::textColourOnId, inkColour());
     addAndMakeVisible (tipProgramApplyButton);
+
+    tipProgramAuditionButton.onClick = [this] { auditionTipSoundProgram(); };
+    tipProgramAuditionButton.setColour (juce::TextButton::buttonColourId, inactiveButtonColour());
+    tipProgramAuditionButton.setColour (juce::TextButton::buttonOnColourId, activeButtonColour());
+    tipProgramAuditionButton.setColour (juce::TextButton::textColourOffId, textColour());
+    tipProgramAuditionButton.setColour (juce::TextButton::textColourOnId, inkColour());
+    addAndMakeVisible (tipProgramAuditionButton);
+
+    tipProgramResetButton.onClick = [this] { resetTipSoundProgram(); };
+    tipProgramResetButton.setButtonText ("Default");
+    tipProgramResetButton.setColour (juce::TextButton::buttonColourId, inactiveButtonColour());
+    tipProgramResetButton.setColour (juce::TextButton::buttonOnColourId, activeButtonColour());
+    tipProgramResetButton.setColour (juce::TextButton::textColourOffId, textColour());
+    tipProgramResetButton.setColour (juce::TextButton::textColourOnId, inkColour());
+    addAndMakeVisible (tipProgramResetButton);
+
+    tipProgramOpenButton.onClick = [this] { openLargeTipProgramEditor(); };
+    tipProgramOpenButton.setColour (juce::TextButton::buttonColourId, inactiveButtonColour());
+    tipProgramOpenButton.setColour (juce::TextButton::buttonOnColourId, activeButtonColour());
+    tipProgramOpenButton.setColour (juce::TextButton::textColourOffId, textColour());
+    tipProgramOpenButton.setColour (juce::TextButton::textColourOnId, inkColour());
+    addAndMakeVisible (tipProgramOpenButton);
+
+    tipProgramStatusLabel.setText ("not applied", juce::dontSendNotification);
+    tipProgramStatusLabel.setJustificationType (juce::Justification::centredLeft);
+    tipProgramStatusLabel.setFont (juce::FontOptions (12.0f, juce::Font::bold));
+    tipProgramStatusLabel.setColour (juce::Label::textColourId, quietTextColour());
+    addAndMakeVisible (tipProgramStatusLabel);
+
+    tipProgramMetaLabel.setText ("", juce::dontSendNotification);
+    tipProgramMetaLabel.setJustificationType (juce::Justification::centredRight);
+    tipProgramMetaLabel.setFont (juce::FontOptions (12.0f, juce::Font::bold));
+    tipProgramMetaLabel.setColour (juce::Label::textColourId, quietTextColour());
+    addAndMakeVisible (tipProgramMetaLabel);
 
     pitchListTitle.setText ("tip  note  R  low  high   p       tip  note  R  low  high   p", juce::dontSendNotification);
     pitchListTitle.setJustificationType (juce::Justification::centredLeft);
@@ -756,13 +1030,24 @@ void CityToolbar::resized()
     {
         auto codeHeaderArea = takeRow (bounds, 34);
         tipSoundLanguageControl.label.setBounds (codeHeaderArea.removeFromLeft (50));
-        tipSoundLanguageControl.combo.setBounds (codeHeaderArea.removeFromLeft (112));
+        tipSoundLanguageControl.combo.setBounds (codeHeaderArea.removeFromLeft (82));
         codeHeaderArea.removeFromLeft (gap);
-        tipProgramApplyButton.setBounds (codeHeaderArea.removeFromRight (84));
+        tipProgramOpenButton.setBounds (codeHeaderArea.removeFromRight (62));
+        codeHeaderArea.removeFromRight (gap);
+        tipProgramResetButton.setBounds (codeHeaderArea.removeFromRight (70));
+        codeHeaderArea.removeFromRight (gap);
+        tipProgramAuditionButton.setBounds (codeHeaderArea.removeFromRight (86));
+        codeHeaderArea.removeFromRight (gap);
+        tipProgramApplyButton.setBounds (codeHeaderArea.removeFromRight (72));
         codeHeaderArea.removeFromRight (gap);
         tipProgramTitle.setBounds (codeHeaderArea);
 
-        const auto editorHeight = juce::jlimit (100, 230, bounds.getHeight() - 52);
+        auto statusArea = bounds.removeFromTop (20);
+        tipProgramMetaLabel.setBounds (statusArea.removeFromRight (170));
+        tipProgramStatusLabel.setBounds (statusArea);
+        bounds.removeFromTop (6);
+
+        const auto editorHeight = juce::jlimit (100, 230, bounds.getHeight() - 26);
         tipProgramEditor.setBounds (bounds.removeFromTop (editorHeight));
         bounds.removeFromTop (12);
     }
@@ -889,6 +1174,11 @@ void CityToolbar::setValues (int sides,
     tipSoundLanguageControl.combo.setVisible (activePolygonSelected && activeTipProgramMode);
     tipProgramTitle.setVisible (activePolygonSelected && activeTipProgramMode);
     tipProgramApplyButton.setVisible (activePolygonSelected && activeTipProgramMode);
+    tipProgramAuditionButton.setVisible (activePolygonSelected && activeTipProgramMode);
+    tipProgramResetButton.setVisible (activePolygonSelected && activeTipProgramMode);
+    tipProgramOpenButton.setVisible (activePolygonSelected && activeTipProgramMode);
+    tipProgramStatusLabel.setVisible (activePolygonSelected && activeTipProgramMode);
+    tipProgramMetaLabel.setVisible (activePolygonSelected && activeTipProgramMode);
     tipProgramEditor.setVisible (activePolygonSelected && activeTipProgramMode);
     tipSoundLanguageControl.combo.setSelectedId (
        #if UNFOLDING_HAS_WELD_CHUCK
@@ -897,8 +1187,28 @@ void CityToolbar::setValues (int sides,
                                                  1,
        #endif
                                                  juce::dontSendNotification);
+    activeTipSoundLanguage = tipSoundLanguages[static_cast<size_t> (activeTipIndex)];
+    const auto nextProgram = tipSoundPrograms[static_cast<size_t> (activeTipIndex)];
+    const auto switchedTip = loadedProgramTipIndex != activeTipIndex;
+
     tipProgramTitle.setText ("Tip " + juce::String (activeTipIndex + 1) + " program", juce::dontSendNotification);
-    tipProgramEditor.setText (tipSoundPrograms[static_cast<size_t> (activeTipIndex)], false);
+
+    if (switchedTip || ! tipProgramEditor.hasKeyboardFocus (true) || ! tipProgramDirty)
+    {
+        tipProgramEditor.setText (nextProgram, false);
+        loadedProgramTipIndex = activeTipIndex;
+        loadedTipProgram = nextProgram;
+        lastAppliedTipProgram = nextProgram;
+        tipProgramDirty = false;
+        setTipProgramStatus ("saved", false);
+
+        if (codeEditorWindow != nullptr)
+            codeEditorWindow->syncFromToolbar ("Tip " + juce::String (activeTipIndex + 1) + " code",
+                                               nextProgram,
+                                               wireframeTheme);
+    }
+
+    updateTipProgramMeta();
     for (size_t i = 0; i < tipPitchRows.size(); ++i)
     {
         auto& row = tipPitchRows[i];
@@ -986,7 +1296,7 @@ void CityToolbar::applyTheme()
                          &diameterControl.label, &blockLevelsControl.label, &blockSizeControl.label,
                          &switchOffTimeControl.label, &rateControl.label, &switchActivationControl.label,
                          &switchRetriggerControl.label, &tipSoundLanguageControl.label, &pitchListTitle,
-                         &tipProgramTitle })
+                         &tipProgramTitle, &tipProgramStatusLabel, &tipProgramMetaLabel })
     {
         label->setColour (juce::Label::textColourId, quietTextColour());
     }
@@ -1027,7 +1337,8 @@ void CityToolbar::applyTheme()
 
     for (auto* button : { &playButton, &pauseButton, &stopButton, &selectModeButton, &polygonModeButton,
                           &platterModeButton, &blockModeButton, &plankModeButton, &cableModeButton,
-                          &tipProgramApplyButton })
+                          &tipProgramApplyButton, &tipProgramAuditionButton, &tipProgramResetButton,
+                          &tipProgramOpenButton })
         styleButton (*button);
 
     deleteButton.setColour (juce::TextButton::buttonColourId,
@@ -1172,6 +1483,11 @@ void CityToolbar::selectBuildMode (BuildMode toolMode, BuildMode controlsMode)
     tipSoundLanguageControl.combo.setVisible (activePolygonSelected && activeTipProgramMode);
     tipProgramTitle.setVisible (activePolygonSelected && activeTipProgramMode);
     tipProgramApplyButton.setVisible (activePolygonSelected && activeTipProgramMode);
+    tipProgramAuditionButton.setVisible (activePolygonSelected && activeTipProgramMode);
+    tipProgramResetButton.setVisible (activePolygonSelected && activeTipProgramMode);
+    tipProgramOpenButton.setVisible (activePolygonSelected && activeTipProgramMode);
+    tipProgramStatusLabel.setVisible (activePolygonSelected && activeTipProgramMode);
+    tipProgramMetaLabel.setVisible (activePolygonSelected && activeTipProgramMode);
     tipProgramEditor.setVisible (activePolygonSelected && activeTipProgramMode);
 
     for (size_t i = 0; i < tipPitchRows.size(); ++i)
@@ -1233,7 +1549,113 @@ void CityToolbar::commitTipSoundProgram()
     if (suppressCallbacks || ! activeTipProgramMode || onTipSoundProgramChanged == nullptr)
         return;
 
-    onTipSoundProgramChanged (activeTipIndex, tipProgramEditor.getText());
+    const auto program = tipProgramEditor.getText();
+    const auto status = onTipSoundProgramChanged (activeTipIndex, program);
+    lastAppliedTipProgram = program;
+    loadedTipProgram = program;
+    tipProgramDirty = false;
+    updateTipProgramMeta();
+    setTipProgramStatus (status, status.containsIgnoreCase ("error")
+                               || status.containsIgnoreCase ("unavailable")
+                               || status.containsIgnoreCase ("empty")
+                               || status.containsIgnoreCase ("not ready"));
+}
+
+void CityToolbar::auditionTipSoundProgram()
+{
+    if (suppressCallbacks || ! activeTipProgramMode || onTipSoundProgramAudition == nullptr)
+        return;
+
+    const auto status = onTipSoundProgramAudition (activeTipIndex, tipProgramEditor.getText());
+    setTipProgramStatus (status, status.containsIgnoreCase ("error")
+                               || status.containsIgnoreCase ("unavailable")
+                               || status.containsIgnoreCase ("empty")
+                               || status.containsIgnoreCase ("not ready"));
+}
+
+void CityToolbar::resetTipSoundProgram()
+{
+    if (suppressCallbacks || ! activeTipProgramMode)
+        return;
+
+    const auto defaultProgram = defaultProgramForActiveTip();
+    tipProgramEditor.setText (defaultProgram, false);
+    tipProgramDirty = defaultProgram != lastAppliedTipProgram;
+    updateTipProgramMeta();
+    setTipProgramStatus ("default loaded - apply to save", false);
+}
+
+void CityToolbar::openLargeTipProgramEditor()
+{
+    if (! activeTipProgramMode)
+        return;
+
+    const auto title = "Tip " + juce::String (activeTipIndex + 1) + " code";
+
+    if (codeEditorWindow == nullptr)
+        codeEditorWindow = std::make_unique<CodeEditorWindow> (*this,
+                                                               title,
+                                                               tipProgramEditor.getText(),
+                                                               wireframeTheme);
+    else
+    {
+        codeEditorWindow->syncFromToolbar (title, tipProgramEditor.getText(), wireframeTheme);
+        codeEditorWindow->toFront (true);
+    }
+}
+
+void CityToolbar::applyLargeTipProgramEditorText (const juce::String& text)
+{
+    tipProgramEditor.setText (text, false);
+    commitTipSoundProgram();
+}
+
+void CityToolbar::auditionLargeTipProgramEditorText (const juce::String& text)
+{
+    tipProgramEditor.setText (text, false);
+    auditionTipSoundProgram();
+}
+
+void CityToolbar::resetLargeTipProgramEditorText()
+{
+    const auto defaultProgram = defaultProgramForActiveTip();
+    tipProgramEditor.setText (defaultProgram, false);
+    tipProgramDirty = defaultProgram != lastAppliedTipProgram;
+    updateTipProgramMeta();
+    setTipProgramStatus ("default loaded - apply to save", false);
+}
+
+juce::String CityToolbar::defaultProgramForActiveTip() const
+{
+    return FoldingModule::defaultTipSoundProgram (activeTipSoundLanguage,
+                                                  activeTipIndex,
+                                                  activeSides);
+}
+
+void CityToolbar::setTipProgramStatus (const juce::String& text, bool warning)
+{
+    setCodeStatus (tipProgramStatusLabel, text, warning);
+
+    if (codeEditorWindow != nullptr)
+        codeEditorWindow->setStatus (text, warning);
+}
+
+void CityToolbar::updateTipProgramMeta()
+{
+    const auto text = tipProgramEditor.getText();
+    auto lines = 1;
+
+    for (int i = 0; i < text.length(); ++i)
+        if (text[i] == '\n')
+            ++lines;
+
+    tipProgramMetaLabel.setText ((tipProgramDirty ? "modified" : "saved")
+                                     + juce::String ("  /  ")
+                                     + juce::String (lines)
+                                     + juce::String (lines == 1 ? " line  /  " : " lines  /  ")
+                                     + juce::String (text.length())
+                                     + " chars",
+                                 juce::dontSendNotification);
 }
 
 float CityToolbar::pitchValueFromText (const juce::String& text)

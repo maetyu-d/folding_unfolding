@@ -65,6 +65,13 @@ private:
     void saveCity();
     void showFileError (const juce::String& title, const juce::String& message);
     void setAudioMode (AudioMode mode);
+    juce::String previewTipProgram (TipSoundLanguage language,
+                                    const juce::String& program,
+                                    int sides,
+                                    int tipIndex,
+                                    float fold,
+                                    float pitch,
+                                    bool audition);
     static juce::String tickedText (juce::String text, bool ticked);
 
     CityComponent cityComponent;
