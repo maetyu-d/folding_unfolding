@@ -34,6 +34,7 @@ void CollisionSynth::reset()
 {
     const juce::ScopedLock lock (voiceLock);
     voices.clear();
+    voices.reserve (18);
     std::fill (delayLeft.begin(), delayLeft.end(), 0.0f);
     std::fill (delayRight.begin(), delayRight.end(), 0.0f);
     delayWriteIndex = 0;
@@ -115,7 +116,8 @@ void CollisionSynth::render (juce::AudioBuffer<float>& buffer, int startSample, 
     if (channelCount == 0)
         return;
 
-    const juce::ScopedLock lock (voiceLock);
+    if (! voiceLock.tryEnter())
+        return;
 
     for (int sample = 0; sample < numSamples; ++sample)
     {
@@ -158,8 +160,8 @@ void CollisionSynth::render (juce::AudioBuffer<float>& buffer, int startSample, 
 
         if (! delayLeft.empty())
         {
-            const auto readIndexA = (delayWriteIndex + delayLeft.size() - juce::jlimit<size_t> (1, delayLeft.size() - 1, static_cast<size_t> (sampleRate * 0.31))) % delayLeft.size();
-            const auto readIndexB = (delayWriteIndex + delayRight.size() - juce::jlimit<size_t> (1, delayRight.size() - 1, static_cast<size_t> (sampleRate * 0.43))) % delayRight.size();
+            const auto readIndexA = (delayWriteIndex + delayLeft.size() - delayReadOffsetA) % delayLeft.size();
+            const auto readIndexB = (delayWriteIndex + delayRight.size() - delayReadOffsetB) % delayRight.size();
             const auto delayedLeft = delayLeft[readIndexA];
             const auto delayedRight = delayRight[readIndexB];
             const auto inputLeft = left;
@@ -186,6 +188,7 @@ void CollisionSynth::render (juce::AudioBuffer<float>& buffer, int startSample, 
                                   voices.end(),
                                   [] (const Voice& voice) { return voice.age >= voice.duration; }),
                   voices.end());
+    voiceLock.exit();
 }
 
 float CollisionSynth::envelopeFor (const Voice& voice) noexcept
@@ -212,5 +215,8 @@ void CollisionSynth::resizeDelay()
     const auto size = static_cast<size_t> (juce::jmax (1.0, sampleRate * 0.72));
     delayLeft.assign (size, 0.0f);
     delayRight.assign (size, 0.0f);
+    const auto maxOffset = size > 1 ? size - 1 : size;
+    delayReadOffsetA = juce::jlimit<size_t> (1, maxOffset, static_cast<size_t> (sampleRate * 0.31));
+    delayReadOffsetB = juce::jlimit<size_t> (1, maxOffset, static_cast<size_t> (sampleRate * 0.43));
     delayWriteIndex = 0;
 }

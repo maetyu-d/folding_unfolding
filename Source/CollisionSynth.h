@@ -41,5 +41,7 @@ private:
     std::vector<float> delayLeft;
     std::vector<float> delayRight;
     size_t delayWriteIndex = 0;
+    size_t delayReadOffsetA = 1;
+    size_t delayReadOffsetB = 1;
     double sampleRate = 44100.0;
 };

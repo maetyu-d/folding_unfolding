@@ -139,7 +139,7 @@ CityComponent::CityComponent()
     openGLContext.setContinuousRepainting (false);
     openGLContext.attachTo (*this);
 
-    startTimerHz (45);
+    startTimerHz (60);
 }
 
 CityComponent::~CityComponent()
